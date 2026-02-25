@@ -45,6 +45,9 @@
                     @currentDate.ToString("yyyy-MM-dd")
                 </div>
                 <div>
+                    <button class="btn btn-sm btn-outline-info me-2" @onclick="ImportFromWPF">
+                        Import from WPF
+                    </button>
                     <button class="btn btn-sm btn-outline-secondary me-2" @onclick="ReloadCurrentBoard">
                         Reload
                     </button>
@@ -444,6 +447,70 @@ else if (activeTab == "names")
         {
             peopleNames.RemoveAt(index);
             await SaveToLocalStorage();
+        }
+    }
+
+    private async Task ImportFromWPF()
+    {
+        try
+        {
+            // This would need to be implemented to read from a file
+            // For now, let's create a simple import dialog
+            var importData = await JSRuntime.InvokeAsync<string>("prompt", "Paste your WPF data (JSON from %APPDATA%\\AllocationApp\\boards.json):");
+            if (!string.IsNullOrWhiteSpace(importData))
+            {
+                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(importData);
+                if (data != null)
+                {
+                    // Import column names
+                    if (data.TryGetValue("ColumnNames", out var columnNamesData) && 
+                        columnNamesData is System.Text.Json.JsonElement columnNamesElement)
+                    {
+                        columnNames.Clear();
+                        foreach (var item in columnNamesElement.EnumerateArray())
+                        {
+                            columnNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    // Import people names
+                    if (data.TryGetValue("PeopleNames", out var peopleNamesData) && 
+                        peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
+                    {
+                        peopleNames.Clear();
+                        foreach (var item in peopleNamesElement.EnumerateArray())
+                        {
+                            peopleNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    // Import boards
+                    if (data.TryGetValue("Boards", out var boardsData) && 
+                        boardsData is System.Text.Json.JsonElement boardsElement)
+                    {
+                        boardByDate.Clear();
+                        foreach (var board in boardsElement.EnumerateObject())
+                        {
+                            if (DateOnly.TryParse(board.Name, out var date))
+                            {
+                                var cells = new List<string>();
+                                foreach (var cell in board.Value.EnumerateArray())
+                                {
+                                    cells.Add(cell.GetString() ?? "");
+                                }
+                                boardByDate[date] = UnflattenBoard(cells);
+                            }
+                        }
+                    }
+
+                    await SaveToLocalStorage();
+                    StateHasChanged();
+                }
+            }
+        }
+        catch
+        {
+            // Ignore import errors
         }
     }
 
