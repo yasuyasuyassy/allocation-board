@@ -45,6 +45,12 @@
                     @currentDate.ToString("yyyy-MM-dd")
                 </div>
                 <div>
+                    <button class="btn btn-sm btn-outline-success me-2" @onclick="AddRow">
+                        + Row
+                    </button>
+                    <button class="btn btn-sm btn-outline-success me-2" @onclick="AddColumnToBoard">
+                        + Column
+                    </button>
                     <button class="btn btn-sm btn-outline-info me-2" @onclick="ImportFromWPF">
                         Import from WPF
                     </button>
@@ -135,7 +141,7 @@ else if (activeTab == "assign")
             </div>
 
             <button class="btn btn-outline-primary mt-2"
-                    disabled="@(columnNames.Count >= Columns)"
+                    disabled="@(columnNames.Count >= 10)"
                     @onclick="AddColumn">
                 Add Column
             </button>
@@ -176,8 +182,8 @@ else if (activeTab == "names")
 }
 
 @code {
-    private const int Rows = 5;
-    private const int Columns = 4;
+    private int Rows = 5;
+    private int Columns = 4;
 
     private string activeTab = "home";
 
@@ -252,6 +258,26 @@ else if (activeTab == "names")
 
             boardByDate[date] = board;
         }
+        else
+        {
+            // Resize existing board if dimensions changed
+            var existingBoard = boardByDate[date];
+            if (existingBoard.GetLength(0) != Rows || existingBoard.GetLength(1) != Columns)
+            {
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data
+                for (var r = 0; r < Math.Min(existingBoard.GetLength(0), Rows); r++)
+                {
+                    for (var c = 0; c < Math.Min(existingBoard.GetLength(1), Columns); c++)
+                    {
+                        newBoard[r, c] = existingBoard[r, c];
+                    }
+                }
+                
+                boardByDate[date] = newBoard;
+            }
+        }
     }
 
     private string[,] CurrentBoard => boardByDate[currentDate];
@@ -300,6 +326,66 @@ else if (activeTab == "names")
         }
 
         boardByDate[currentDate] = board;
+        await SaveToLocalStorage();
+    }
+
+    private async void AddRow()
+    {
+        Rows++;
+        // Update all existing boards to have the new row
+        foreach (var kvp in boardByDate)
+        {
+            var oldBoard = kvp.Value;
+            var newBoard = new string[Rows, Columns];
+            
+            // Copy existing data
+            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+            {
+                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns); c++)
+                {
+                    newBoard[r, c] = oldBoard[r, c];
+                }
+            }
+            
+            boardByDate[kvp.Key] = newBoard;
+        }
+        
+        // Ensure current date has the updated board
+        EnsureBoardForDate(currentDate);
+        await SaveToLocalStorage();
+    }
+
+    private async void AddColumnToBoard()
+    {
+        if (Columns >= 10) // Limit to prevent too wide boards
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
+            return;
+        }
+        
+        Columns++;
+        columnNames.Add($"Column {Columns}");
+        
+        // Update all existing boards to have the new column
+        foreach (var kvp in boardByDate)
+        {
+            var oldBoard = kvp.Value;
+            var newBoard = new string[Rows, Columns];
+            
+            // Copy existing data
+            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+            {
+                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
+                {
+                    newBoard[r, c] = oldBoard[r, c];
+                }
+            }
+            
+            boardByDate[kvp.Key] = newBoard;
+        }
+        
+        // Ensure current date has the updated board
+        EnsureBoardForDate(currentDate);
         await SaveToLocalStorage();
     }
 
@@ -411,13 +497,38 @@ else if (activeTab == "names")
 
     private async void AddColumn()
     {
-        if (columnNames.Count >= Columns)
+        if (Columns >= 10) // Limit to prevent too wide boards
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
             return;
+        }
 
         var result = await JSRuntime.InvokeAsync<string>("prompt", "Enter company name:", $"Company {columnNames.Count + 1}");
         if (!string.IsNullOrWhiteSpace(result))
         {
+            Columns++;
             columnNames.Add(result);
+            
+            // Update all existing boards to have the new column
+            foreach (var kvp in boardByDate)
+            {
+                var oldBoard = kvp.Value;
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data
+                for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+                {
+                    for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
+                    {
+                        newBoard[r, c] = oldBoard[r, c];
+                    }
+                }
+                
+                boardByDate[kvp.Key] = newBoard;
+            }
+            
+            // Ensure current date has the updated board
+            EnsureBoardForDate(currentDate);
             await SaveToLocalStorage();
         }
     }
@@ -426,7 +537,34 @@ else if (activeTab == "names")
     {
         if (index >= 0 && index < columnNames.Count && columnNames.Count > 1)
         {
+            Columns--;
             columnNames.RemoveAt(index);
+            
+            // Update all existing boards to remove the column
+            foreach (var kvp in boardByDate)
+            {
+                var oldBoard = kvp.Value;
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data, skipping the removed column
+                for (var r = 0; r < Rows; r++)
+                {
+                    var newCol = 0;
+                    for (var c = 0; c < oldBoard.GetLength(1); c++)
+                    {
+                        if (c != index && newCol < Columns)
+                        {
+                            newBoard[r, newCol] = oldBoard[r, c];
+                            newCol++;
+                        }
+                    }
+                }
+                
+                boardByDate[kvp.Key] = newBoard;
+            }
+            
+            // Ensure current date has the updated board
+            EnsureBoardForDate(currentDate);
             await SaveToLocalStorage();
         }
     }
