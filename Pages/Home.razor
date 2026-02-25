@@ -1,0 +1,334 @@
+@page "/"
+
+<PageTitle>Allocation Board</PageTitle>
+
+<h1 class="mb-4">Allocation Board</h1>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class='@GetTabCss("home")'
+                @onclick="ActivateHome">
+            Home
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("assign")'
+                @onclick="ActivateAssign">
+            配属
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("names")'
+                @onclick="ActivateNames">
+            Name
+        </button>
+    </li>
+</ul>
+
+@if (activeTab == "home")
+{
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <h5>Calendar</h5>
+            <input type="date"
+                   class="form-control mb-2"
+                   value="@currentDate.ToString("yyyy-MM-dd")"
+                   @onchange="OnDateChanged" />
+            <small class="text-muted">
+                Each date keeps its own board layout while the app is running.
+            </small>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-bold">
+                    @currentDate.ToString("yyyy-MM-dd")
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary me-2" @onclick="ReloadCurrentBoard">
+                        Reload
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive border rounded bg-white p-2">
+                <table class="table table-bordered mb-0 align-middle text-center">
+                    <thead class="table-light">
+                    <tr>
+                        <th style="width: 120px;">Time / Row</th>
+                        @for (var c = 0; c < Columns; c++)
+                        {
+                            <th>@GetColumnHeader(c)</th>
+                        }
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @for (var r = 0; r < Rows; r++)
+                    {
+                        <tr>
+                            <th class="table-light text-start">Row @(r + 1)</th>
+                            @for (var c = 0; c < Columns; c++)
+                            {
+                                <td>
+                                    <button class="btn btn-sm w-100 text-start allocation-cell"
+                                            @onclick="() => OnCellClick(r, c)">
+                                        @GetCellText(r, c)
+                                    </button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <small class="text-muted d-block mt-2">
+                Click a name on the right, then click a cell to assign. Click a filled cell with no name selected to clear it.
+            </small>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <h5>All Names</h5>
+            <ul class="list-group">
+                @foreach (var name in peopleNames)
+                {
+                    var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
+                    <li class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
+                        style="cursor: pointer;"
+                        @onclick="() => OnNameClick(name)">
+                        @name
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+else if (activeTab == "assign")
+{
+    <div class="row">
+        <div class="col-md-8">
+            <h5>配属 (Columns)</h5>
+            <p class="text-muted">
+                Edit the column names used on the board.
+            </p>
+
+            @for (var i = 0; i < columnNames.Count; i++)
+            {
+                var index = i;
+                <div class="input-group mb-2">
+                    <span class="input-group-text">Column @(index + 1)</span>
+                    <input class="form-control"
+                           @bind="columnNames[index]"
+                           @bind:event="oninput" />
+                    <button class="btn btn-outline-danger"
+                            disabled="@(columnNames.Count <= 1)"
+                            @onclick="() => RemoveColumn(index)">
+                        Delete
+                    </button>
+                </div>
+            }
+
+            <button class="btn btn-outline-primary mt-2"
+                    disabled="@(columnNames.Count >= Columns)"
+                    @onclick="AddColumn">
+                Add Column
+            </button>
+        </div>
+    </div>
+}
+else if (activeTab == "names")
+{
+    <div class="row">
+        <div class="col-md-8">
+            <h5>Name list</h5>
+            <p class="text-muted">
+                Manage the master list of names. These appear on the Home tab.
+            </p>
+
+            @for (var i = 0; i < peopleNames.Count; i++)
+            {
+                var index = i;
+                <div class="input-group mb-2">
+                    <input class="form-control"
+                           @bind="peopleNames[index]"
+                           @bind:event="oninput" />
+                    <button class="btn btn-outline-danger"
+                            @onclick="() => RemoveName(index)">
+                        Delete
+                    </button>
+                </div>
+            }
+
+            <button class="btn btn-outline-primary mt-2"
+                    @onclick="AddName">
+                Add Name
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private const int Rows = 5;
+    private const int Columns = 4;
+
+    private string activeTab = "home";
+
+    private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
+
+    private readonly List<string> columnNames = new()
+    {
+        "Column 1",
+        "Column 2",
+        "Column 3",
+        "Column 4"
+    };
+
+    private readonly List<string> peopleNames = new()
+    {
+        "Name-1",
+        "Name-2",
+        "Name-3",
+        "Name-4",
+        "Name-5"
+    };
+
+    private readonly Dictionary<DateOnly, string[,]> boardByDate = new();
+
+    private string? selectedName;
+
+    protected override void OnInitialized()
+    {
+        EnsureBoardForDate(currentDate);
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        activeTab = tab;
+    }
+
+    private void ActivateHome() => SetActiveTab("home");
+
+    private void ActivateAssign() => SetActiveTab("assign");
+
+    private void ActivateNames() => SetActiveTab("names");
+
+    private string GetTabCss(string tab)
+    {
+        return activeTab == tab ? "nav-link active" : "nav-link";
+    }
+
+    private void EnsureBoardForDate(DateOnly date)
+    {
+        if (!boardByDate.ContainsKey(date))
+        {
+            var board = new string[Rows, Columns];
+            for (var r = 0; r < Rows; r++)
+            {
+                for (var c = 0; c < Columns; c++)
+                {
+                    board[r, c] = string.Empty;
+                }
+            }
+
+            boardByDate[date] = board;
+        }
+    }
+
+    private string[,] CurrentBoard => boardByDate[currentDate];
+
+    private string GetColumnHeader(int index)
+    {
+        return index < columnNames.Count ? columnNames[index] : string.Empty;
+    }
+
+    private string GetCellText(int row, int column)
+    {
+        return CurrentBoard[row, column];
+    }
+
+    private void OnDateChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string s && DateOnly.TryParse(s, out var newDate))
+        {
+            currentDate = newDate;
+            EnsureBoardForDate(currentDate);
+        }
+    }
+
+    private void OnCellClick(int row, int column)
+    {
+        if (!string.IsNullOrEmpty(selectedName))
+        {
+            CurrentBoard[row, column] = selectedName;
+        }
+        else if (!string.IsNullOrEmpty(CurrentBoard[row, column]))
+        {
+            CurrentBoard[row, column] = string.Empty;
+        }
+    }
+
+    private void ReloadCurrentBoard()
+    {
+        var board = new string[Rows, Columns];
+        for (var r = 0; r < Rows; r++)
+        {
+            for (var c = 0; c < Columns; c++)
+            {
+                board[r, c] = string.Empty;
+            }
+        }
+
+        boardByDate[currentDate] = board;
+    }
+
+    private void OnNameClick(string name)
+    {
+        selectedName = selectedName == name ? null : name;
+    }
+
+    private void AddColumn()
+    {
+        if (columnNames.Count < Columns)
+        {
+            columnNames.Add($"Column {columnNames.Count + 1}");
+        }
+    }
+
+    private void RemoveColumn(int index)
+    {
+        if (index >= 0 && index < columnNames.Count && columnNames.Count > 1)
+        {
+            columnNames.RemoveAt(index);
+        }
+    }
+
+    private void AddName()
+    {
+        var nextIndex = GetNextDefaultNameIndex();
+        peopleNames.Add($"Name-{nextIndex}");
+    }
+
+    private void RemoveName(int index)
+    {
+        if (index >= 0 && index < peopleNames.Count)
+        {
+            peopleNames.RemoveAt(index);
+        }
+    }
+
+    private int GetNextDefaultNameIndex()
+    {
+        var max = 0;
+        foreach (var name in peopleNames)
+        {
+            const string prefix = "Name-";
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(name.AsSpan(prefix.Length), out var n) &&
+                n > max)
+            {
+                max = n;
+            }
+        }
+
+        return max + 1;
+    }
+}
