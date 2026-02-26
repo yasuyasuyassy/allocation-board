@@ -280,7 +280,19 @@ else if (activeTab == "names")
         }
     }
 
-    private string[,] CurrentBoard => boardByDate[currentDate];
+    private string[,] CurrentBoard 
+{
+    get 
+    {
+        if (boardByDate.TryGetValue(currentDate, out var board))
+        {
+            return board;
+        }
+        // Return a temporary empty board so the UI doesn't crash
+        return new string[Rows, Columns];
+    }
+}
+    
 
     private string GetColumnHeader(int index)
     {
@@ -300,21 +312,24 @@ else if (activeTab == "names")
             EnsureBoardForDate(currentDate);
         }
     }
+    private async Task OnCellClick(int row, int column)
+{
+    var board = CurrentBoard;
+    // Safety check: Ensure the clicked cell is actually within the current array bounds
+    if (row >= board.GetLength(0) || column >= board.GetLength(1)) return;
 
-    private async void OnCellClick(int row, int column)
+    if (!string.IsNullOrEmpty(selectedName))
     {
-        if (!string.IsNullOrEmpty(selectedName))
-        {
-            CurrentBoard[row, column] = selectedName;
-        }
-        else if (!string.IsNullOrEmpty(CurrentBoard[row, column]))
-        {
-            CurrentBoard[row, column] = string.Empty;
-        }
-        await SaveToLocalStorage();
+        board[row, column] = selectedName;
     }
+    else if (!string.IsNullOrEmpty(board[row, column]))
+    {
+        board[row, column] = string.Empty;
+    }
+    await SaveToLocalStorage();
+}
 
-    private async void ReloadCurrentBoard()
+    private async Task ReloadCurrentBoard()
     {
         var board = new string[Rows, Columns];
         for (var r = 0; r < Rows; r++)
@@ -329,7 +344,7 @@ else if (activeTab == "names")
         await SaveToLocalStorage();
     }
 
-    private async void AddRow()
+    private async Task AddRow()
     {
         Rows++;
         // Update all existing boards to have the new row
@@ -355,7 +370,7 @@ else if (activeTab == "names")
         await SaveToLocalStorage();
     }
 
-    private async void AddColumnToBoard()
+    private async Task AddColumnToBoard()
     {
         if (Columns >= 10) // Limit to prevent too wide boards
         {
@@ -495,7 +510,7 @@ else if (activeTab == "names")
         return board;
     }
 
-    private async void AddColumn()
+    private async Task AddColumn()
     {
         if (Columns >= 10) // Limit to prevent too wide boards
         {
@@ -533,7 +548,7 @@ else if (activeTab == "names")
         }
     }
 
-    private async void RemoveColumn(int index)
+    private async Task RemoveColumn(int index)
     {
         if (index >= 0 && index < columnNames.Count && columnNames.Count > 1)
         {
@@ -569,7 +584,7 @@ else if (activeTab == "names")
         }
     }
 
-    private async void AddName()
+    private async Task AddName()
     {
         var result = await JSRuntime.InvokeAsync<string>("prompt", "Enter person name:", $"Person {GetNextDefaultNameIndex()}");
         if (!string.IsNullOrWhiteSpace(result))
@@ -579,7 +594,7 @@ else if (activeTab == "names")
         }
     }
 
-    private async void RemoveName(int index)
+    private async Task RemoveName(int index)
     {
         if (index >= 0 && index < peopleNames.Count)
         {
