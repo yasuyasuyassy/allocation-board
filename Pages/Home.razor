@@ -211,6 +211,8 @@ else if (activeTab == "names")
 
     private string activeTab = "home";
 
+    private bool _dropOccurred = false;
+    
     private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
 
     private List<string> columnNames = new()
