@@ -130,7 +130,8 @@ else if (activeTab == "assign")
                         <span class="input-group-text">Column @(index + 1)</span>
                         <input class="form-control"
                                @bind="columnNames[index]"
-                               @bind:event="oninput" />
+                               @bind:event="oninput"
+                               @oninput="() => OnColumnNameChanged()" />
                         <button class="btn btn-outline-danger"
                                 disabled="@(columnNames.Count <= 1)"
                                 @onclick="() => RemoveColumn(index)">
@@ -164,7 +165,8 @@ else if (activeTab == "names")
                     <div class="input-group mb-2">
                         <input class="form-control"
                                @bind="peopleNames[index]"
-                               @bind:event="oninput" />
+                               @bind:event="oninput"
+                               @oninput="() => OnPeopleNameChanged()" />
                         <button class="btn btn-outline-danger"
                                 @onclick="() => RemoveName(index)">
                             Delete
@@ -189,7 +191,7 @@ else if (activeTab == "names")
 
     private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
 
-    private readonly List<string> columnNames = new()
+    private List<string> columnNames = new()
     {
         "Column 1",
         "Column 2",
@@ -197,7 +199,7 @@ else if (activeTab == "names")
         "Column 4"
     };
 
-    private readonly List<string> peopleNames = new()
+    private List<string> peopleNames = new()
     {
         "Name-1",
         "Name-2",
@@ -216,7 +218,26 @@ else if (activeTab == "names")
     protected override async Task OnInitializedAsync()
     {
         await LoadFromLocalStorage();
+        
+        // After loading, ensure Rows and Columns reflect the loaded data
+        if (boardByDate.TryGetValue(currentDate, out var board))
+        {
+            Rows = board.GetLength(0);
+            Columns = board.GetLength(1);
+            
+            // Ensure columnNames count matches Columns
+            while (columnNames.Count < Columns)
+            {
+                columnNames.Add($"Column {columnNames.Count + 1}");
+            }
+            while (columnNames.Count > Columns)
+            {
+                columnNames.RemoveAt(columnNames.Count - 1);
+            }
+        }
+        
         EnsureBoardForDate(currentDate);
+        StateHasChanged();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -281,18 +302,13 @@ else if (activeTab == "names")
     }
 
     private string[,] CurrentBoard 
-{
-    get 
     {
-        if (boardByDate.TryGetValue(currentDate, out var board))
+        get 
         {
-            return board;
+            EnsureBoardForDate(currentDate);
+            return boardByDate[currentDate];
         }
-        // Return a temporary empty board so the UI doesn't crash
-        return new string[Rows, Columns];
     }
-}
-    
 
     private string GetColumnHeader(int index)
     {
@@ -301,33 +317,42 @@ else if (activeTab == "names")
 
     private string GetCellText(int row, int column)
     {
-        return CurrentBoard[row, column];
+        if (row < Rows && column < Columns)
+        {
+            return CurrentBoard[row, column];
+        }
+        return string.Empty;
     }
 
-    private void OnDateChanged(ChangeEventArgs e)
+    private async void OnDateChanged(ChangeEventArgs e)
     {
         if (e.Value is string s && DateOnly.TryParse(s, out var newDate))
         {
             currentDate = newDate;
             EnsureBoardForDate(currentDate);
+            StateHasChanged();
+            await SaveToLocalStorage();
         }
     }
-    private async Task OnCellClick(int row, int column)
-{
-    var board = CurrentBoard;
-    // Safety check: Ensure the clicked cell is actually within the current array bounds
-    if (row >= board.GetLength(0) || column >= board.GetLength(1)) return;
 
-    if (!string.IsNullOrEmpty(selectedName))
+    private async Task OnCellClick(int row, int column)
     {
-        board[row, column] = selectedName;
+        if (row >= Rows || column >= Columns) return;
+
+        var board = CurrentBoard;
+        
+        if (!string.IsNullOrEmpty(selectedName))
+        {
+            board[row, column] = selectedName;
+        }
+        else if (!string.IsNullOrEmpty(board[row, column]))
+        {
+            board[row, column] = string.Empty;
+        }
+        
+        await SaveToLocalStorage();
+        StateHasChanged();
     }
-    else if (!string.IsNullOrEmpty(board[row, column]))
-    {
-        board[row, column] = string.Empty;
-    }
-    await SaveToLocalStorage();
-}
 
     private async Task ReloadCurrentBoard()
     {
@@ -342,12 +367,16 @@ else if (activeTab == "names")
 
         boardByDate[currentDate] = board;
         await SaveToLocalStorage();
+        StateHasChanged();
     }
 
     private async Task AddRow()
     {
         Rows++;
+        
         // Update all existing boards to have the new row
+        var updatedBoards = new Dictionary<DateOnly, string[,]>();
+        
         foreach (var kvp in boardByDate)
         {
             var oldBoard = kvp.Value;
@@ -362,17 +391,23 @@ else if (activeTab == "names")
                 }
             }
             
-            boardByDate[kvp.Key] = newBoard;
+            updatedBoards[kvp.Key] = newBoard;
         }
         
-        // Ensure current date has the updated board
-        EnsureBoardForDate(currentDate);
+        // Clear and update the dictionary
+        boardByDate.Clear();
+        foreach (var kvp in updatedBoards)
+        {
+            boardByDate[kvp.Key] = kvp.Value;
+        }
+        
         await SaveToLocalStorage();
+        StateHasChanged();
     }
 
     private async Task AddColumnToBoard()
     {
-        if (Columns >= 10) // Limit to prevent too wide boards
+        if (Columns >= 10)
         {
             await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
             return;
@@ -382,6 +417,8 @@ else if (activeTab == "names")
         columnNames.Add($"Column {Columns}");
         
         // Update all existing boards to have the new column
+        var updatedBoards = new Dictionary<DateOnly, string[,]>();
+        
         foreach (var kvp in boardByDate)
         {
             var oldBoard = kvp.Value;
@@ -396,17 +433,24 @@ else if (activeTab == "names")
                 }
             }
             
-            boardByDate[kvp.Key] = newBoard;
+            updatedBoards[kvp.Key] = newBoard;
         }
         
-        // Ensure current date has the updated board
-        EnsureBoardForDate(currentDate);
+        // Clear and update the dictionary
+        boardByDate.Clear();
+        foreach (var kvp in updatedBoards)
+        {
+            boardByDate[kvp.Key] = kvp.Value;
+        }
+        
         await SaveToLocalStorage();
+        StateHasChanged();
     }
 
     private void OnNameClick(string name)
     {
         selectedName = selectedName == name ? null : name;
+        StateHasChanged();
     }
 
     private async Task SaveToLocalStorage()
@@ -417,16 +461,19 @@ else if (activeTab == "names")
             {
                 ColumnNames = columnNames,
                 PeopleNames = peopleNames,
+                Rows = Rows,
+                Columns = Columns,
                 Boards = boardByDate.ToDictionary(
                     kvp => kvp.Key.ToString("yyyy-MM-dd"),
                     kvp => FlattenBoard(kvp.Value))
             };
 
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "allocationBoardData", System.Text.Json.JsonSerializer.Serialize(data));
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "allocationBoardData", json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore storage errors
+            Console.WriteLine($"Error saving to localStorage: {ex.Message}");
         }
     }
 
@@ -440,9 +487,20 @@ else if (activeTab == "names")
                 var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
                 if (data != null)
                 {
+                    // Load Rows and Columns first
+                    if (data.TryGetValue("Rows", out var rowsData) && rowsData is System.Text.Json.JsonElement rowsElement)
+                    {
+                        Rows = rowsElement.GetInt32();
+                    }
+                    
+                    if (data.TryGetValue("Columns", out var columnsData) && columnsData is System.Text.Json.JsonElement columnsElement)
+                    {
+                        Columns = columnsElement.GetInt32();
+                    }
+
                     if (data.TryGetValue("ColumnNames", out var columnNamesData) && columnNamesData is System.Text.Json.JsonElement columnNamesElement)
                     {
-                        columnNames.Clear();
+                        columnNames = new List<string>();
                         foreach (var item in columnNamesElement.EnumerateArray())
                         {
                             columnNames.Add(item.GetString() ?? "");
@@ -451,7 +509,7 @@ else if (activeTab == "names")
 
                     if (data.TryGetValue("PeopleNames", out var peopleNamesData) && peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
                     {
-                        peopleNames.Clear();
+                        peopleNames = new List<string>();
                         foreach (var item in peopleNamesElement.EnumerateArray())
                         {
                             peopleNames.Add(item.GetString() ?? "");
@@ -477,9 +535,9 @@ else if (activeTab == "names")
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore load errors
+            Console.WriteLine($"Error loading from localStorage: {ex.Message}");
         }
     }
 
@@ -512,7 +570,7 @@ else if (activeTab == "names")
 
     private async Task AddColumn()
     {
-        if (Columns >= 10) // Limit to prevent too wide boards
+        if (Columns >= 10)
         {
             await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
             return;
@@ -525,6 +583,8 @@ else if (activeTab == "names")
             columnNames.Add(result);
             
             // Update all existing boards to have the new column
+            var updatedBoards = new Dictionary<DateOnly, string[,]>();
+            
             foreach (var kvp in boardByDate)
             {
                 var oldBoard = kvp.Value;
@@ -539,12 +599,18 @@ else if (activeTab == "names")
                     }
                 }
                 
-                boardByDate[kvp.Key] = newBoard;
+                updatedBoards[kvp.Key] = newBoard;
             }
             
-            // Ensure current date has the updated board
-            EnsureBoardForDate(currentDate);
+            // Clear and update the dictionary
+            boardByDate.Clear();
+            foreach (var kvp in updatedBoards)
+            {
+                boardByDate[kvp.Key] = kvp.Value;
+            }
+            
             await SaveToLocalStorage();
+            StateHasChanged();
         }
     }
 
@@ -556,6 +622,8 @@ else if (activeTab == "names")
             columnNames.RemoveAt(index);
             
             // Update all existing boards to remove the column
+            var updatedBoards = new Dictionary<DateOnly, string[,]>();
+            
             foreach (var kvp in boardByDate)
             {
                 var oldBoard = kvp.Value;
@@ -575,12 +643,18 @@ else if (activeTab == "names")
                     }
                 }
                 
-                boardByDate[kvp.Key] = newBoard;
+                updatedBoards[kvp.Key] = newBoard;
             }
             
-            // Ensure current date has the updated board
-            EnsureBoardForDate(currentDate);
+            // Clear and update the dictionary
+            boardByDate.Clear();
+            foreach (var kvp in updatedBoards)
+            {
+                boardByDate[kvp.Key] = kvp.Value;
+            }
+            
             await SaveToLocalStorage();
+            StateHasChanged();
         }
     }
 
@@ -591,6 +665,7 @@ else if (activeTab == "names")
         {
             peopleNames.Add(result);
             await SaveToLocalStorage();
+            StateHasChanged();
         }
     }
 
@@ -599,27 +674,56 @@ else if (activeTab == "names")
         if (index >= 0 && index < peopleNames.Count)
         {
             peopleNames.RemoveAt(index);
+            
+            // Clear selected name if it was removed
+            if (selectedName != null && !peopleNames.Contains(selectedName))
+            {
+                selectedName = null;
+            }
+            
             await SaveToLocalStorage();
+            StateHasChanged();
         }
+    }
+
+    private async Task OnColumnNameChanged()
+    {
+        await SaveToLocalStorage();
+        StateHasChanged();
+    }
+
+    private async Task OnPeopleNameChanged()
+    {
+        await SaveToLocalStorage();
+        StateHasChanged();
     }
 
     private async Task ImportFromWPF()
     {
         try
         {
-            // This would need to be implemented to read from a file
-            // For now, let's create a simple import dialog
             var importData = await JSRuntime.InvokeAsync<string>("prompt", "Paste your WPF data (JSON from %APPDATA%\\AllocationApp\\boards.json):");
             if (!string.IsNullOrWhiteSpace(importData))
             {
                 var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(importData);
                 if (data != null)
                 {
+                    // Import Rows and Columns
+                    if (data.TryGetValue("Rows", out var rowsData) && rowsData is System.Text.Json.JsonElement rowsElement)
+                    {
+                        Rows = rowsElement.GetInt32();
+                    }
+                    
+                    if (data.TryGetValue("Columns", out var columnsData) && columnsData is System.Text.Json.JsonElement columnsElement)
+                    {
+                        Columns = columnsElement.GetInt32();
+                    }
+
                     // Import column names
                     if (data.TryGetValue("ColumnNames", out var columnNamesData) && 
                         columnNamesData is System.Text.Json.JsonElement columnNamesElement)
                     {
-                        columnNames.Clear();
+                        columnNames = new List<string>();
                         foreach (var item in columnNamesElement.EnumerateArray())
                         {
                             columnNames.Add(item.GetString() ?? "");
@@ -630,7 +734,7 @@ else if (activeTab == "names")
                     if (data.TryGetValue("PeopleNames", out var peopleNamesData) && 
                         peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
                     {
-                        peopleNames.Clear();
+                        peopleNames = new List<string>();
                         foreach (var item in peopleNamesElement.EnumerateArray())
                         {
                             peopleNames.Add(item.GetString() ?? "");
@@ -661,9 +765,10 @@ else if (activeTab == "names")
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore import errors
+            Console.WriteLine($"Error importing: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Import failed: {ex.Message}");
         }
     }
 
