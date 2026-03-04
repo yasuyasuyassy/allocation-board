@@ -5,27 +5,25 @@
 
 <h1 class="mb-4">Allocation Board</h1>
 
-<ul class="list-group list-group-flush">
-    @{
-        var refs = new Dictionary<string, ElementReference>();
-    }
-    @foreach (var name in peopleNames)
-    {
-        var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
-        <li @ref="(element) => refs[name] = element"
-            class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
-            style="cursor: pointer;"
-            draggable="true"
-            @ondragstart="(e) => OnDragStart(name, refs[name])"
-            @ondragend="OnDragEnd"
-            @onclick="() => OnNameClick(name)">
-            @name
-        </li>
-    }
-    @code {
-        // After rendering, store the references in a field for later use? Actually we don't need them after dragstart.
-        // But we need them during the dragstart event, which happens after render, so the dictionary is built.
-    }
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class='@GetTabCss("home")'
+                @onclick="ActivateHome">
+            Home
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("assign")'
+                @onclick="ActivateAssign">
+            配属
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("names")'
+                @onclick="ActivateNames">
+            Name
+        </button>
+    </li>
 </ul>
 
 @if (activeTab == "home")
@@ -85,7 +83,9 @@
                                     <button class="btn btn-sm w-100 text-start allocation-cell @(GetCellClass(r, c))"
                                             @onclick="() => OnCellClick(r, c)"
                                             @ondragover:preventDefault="true"
-                                            @ondrop="(e) => OnCellDrop(r, c)">
+                                            @ondragenter="() => SetDragOverCell(r, c)"
+                                            @ondragleave="ClearDragOverCell"
+                                            @ondrop="() => OnCellDrop(r, c)">
                                         @GetCellText(r, c)
                                     </button>
                                 </td>
@@ -104,10 +104,14 @@
             <h5>All Names</h5>
             <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem;">
                 <ul class="list-group list-group-flush">
+                    @{
+                        var index = 0;
+                    }
                     @foreach (var name in peopleNames)
                     {
                         var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
-                        <li class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
+                        <li @ref="(element) => SetNameElementRef(name, element)"
+                            class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
                             style="cursor: pointer;"
                             draggable="true"
                             @ondragstart="() => OnDragStart(name)"
@@ -115,6 +119,7 @@
                             @onclick="() => OnNameClick(name)">
                             @name
                         </li>
+                        index++;
                     }
                 </ul>
             </div>
@@ -211,8 +216,7 @@ else if (activeTab == "names")
     private string activeTab = "home";
 
     private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
-    private List<ElementReference> nameElements = new();
-    private Dictionary<string, ElementReference> nameElementRefs = new();
+
     private List<string> columnNames = new()
     {
         "Column 1",
@@ -233,11 +237,17 @@ else if (activeTab == "names")
     private readonly Dictionary<DateOnly, string[,]> boardByDate = new();
 
     private string? selectedName;
-    private string? draggedName;  // Track the name being dragged
+    private string? draggedName;
     private (int row, int col)? dragOverCell = null;
+    private Dictionary<string, ElementReference> nameElementRefs = new();
 
     [Inject]
     private IJSRuntime JSRuntime { get; set; } = default!;
+
+    private void SetNameElementRef(string name, ElementReference element)
+    {
+        nameElementRefs[name] = element;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -255,7 +265,6 @@ else if (activeTab == "names")
         }
         
         EnsureBoardForDate(currentDate);
-        StateHasChanged();
     }
 
     private void SetActiveTab(string tab) => activeTab = tab;
@@ -298,9 +307,7 @@ else if (activeTab == "names")
     }
 
     private string GetColumnHeader(int index) => index < columnNames.Count ? columnNames[index] : string.Empty;
-
     private string GetCellText(int row, int column) => (row < Rows && column < Columns) ? CurrentBoard[row, column] : string.Empty;
-
     private string GetCellClass(int row, int column) =>
         dragOverCell.HasValue && dragOverCell.Value.row == row && dragOverCell.Value.col == column ? "drag-over" : "";
 
@@ -315,19 +322,35 @@ else if (activeTab == "names")
         }
     }
 
-    // Drag and drop handlers
-    private async Task OnDragStart(string name, ElementReference element)
+    private async Task OnDragStart(string name)
     {
-    draggedName = name;
-    selectedName = name;
-    await JSRuntime.InvokeVoidAsync("setDragData", element, name);
-    StateHasChanged();
+        draggedName = name;
+        selectedName = name;
+        
+        if (nameElementRefs.TryGetValue(name, out var element))
+        {
+            await JSRuntime.InvokeVoidAsync("setDragData", element, name);
+        }
+        
+        StateHasChanged();
     }
 
     private void OnDragEnd()
     {
         draggedName = null;
-        dragOverCell = null; // Clear highlight
+        dragOverCell = null;
+        StateHasChanged();
+    }
+
+    private void SetDragOverCell(int row, int col)
+    {
+        dragOverCell = (row, col);
+        StateHasChanged();
+    }
+
+    private void ClearDragOverCell()
+    {
+        dragOverCell = null;
         StateHasChanged();
     }
 
@@ -336,14 +359,13 @@ else if (activeTab == "names")
         if (draggedName != null && row < Rows && column < Columns)
         {
             CurrentBoard[row, column] = draggedName;
-            draggedName = null; // Clear after drop
+            draggedName = null;
             dragOverCell = null;
             await SaveToLocalStorage();
             StateHasChanged();
         }
     }
 
-    // Click handler
     private async Task OnCellClick(int row, int column)
     {
         if (row >= Rows || column >= Columns) return;
