@@ -82,8 +82,8 @@
                                 <td>
                                     <button class="btn btn-sm w-100 text-start allocation-cell @(GetCellClass(r, c))"
                                             @onclick="() => OnCellClick(r, c)"
-                                            @ondragover="OnDragOver"
-                                            @ondrop="(e) => OnCellDrop(e, r, c)">
+                                            @ondragover:preventDefault="true"
+                                            @ondrop="(e) => OnCellDrop(r, c)">
                                         @GetCellText(r, c)
                                     </button>
                                 </td>
@@ -108,8 +108,8 @@
                         <li class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
                             style="cursor: pointer;"
                             draggable="true"
-                            @ondragstart="(e) => OnDragStart(e, name)"
-                            @ondragover="OnDragOver"
+                            @ondragstart="() => OnDragStart(name)"
+                            @ondragend="OnDragEnd"
                             @onclick="() => OnNameClick(name)">
                             @name
                         </li>
@@ -230,8 +230,7 @@ else if (activeTab == "names")
     private readonly Dictionary<DateOnly, string[,]> boardByDate = new();
 
     private string? selectedName;
-    
-    // Track which cell is being dragged over for visual feedback
+    private string? draggedName;  // Track the name being dragged
     private (int row, int col)? dragOverCell = null;
 
     [Inject]
@@ -241,50 +240,26 @@ else if (activeTab == "names")
     {
         await LoadFromLocalStorage();
         
-        // After loading, ensure Rows and Columns reflect the loaded data
         if (boardByDate.TryGetValue(currentDate, out var board))
         {
             Rows = board.GetLength(0);
             Columns = board.GetLength(1);
             
-            // Ensure columnNames count matches Columns
             while (columnNames.Count < Columns)
-            {
                 columnNames.Add($"Column {columnNames.Count + 1}");
-            }
             while (columnNames.Count > Columns)
-            {
                 columnNames.RemoveAt(columnNames.Count - 1);
-            }
         }
         
         EnsureBoardForDate(currentDate);
         StateHasChanged();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            // Component is ready
-        }
-    }
-
-    private void SetActiveTab(string tab)
-    {
-        activeTab = tab;
-    }
-
+    private void SetActiveTab(string tab) => activeTab = tab;
     private void ActivateHome() => SetActiveTab("home");
-
     private void ActivateAssign() => SetActiveTab("assign");
-
     private void ActivateNames() => SetActiveTab("names");
-
-    private string GetTabCss(string tab)
-    {
-        return activeTab == tab ? "nav-link active" : "nav-link";
-    }
+    private string GetTabCss(string tab) => activeTab == tab ? "nav-link active" : "nav-link";
 
     private void EnsureBoardForDate(DateOnly date)
     {
@@ -292,68 +267,39 @@ else if (activeTab == "names")
         {
             var board = new string[Rows, Columns];
             for (var r = 0; r < Rows; r++)
-            {
                 for (var c = 0; c < Columns; c++)
-                {
                     board[r, c] = string.Empty;
-                }
-            }
-
             boardByDate[date] = board;
         }
         else
         {
-            // Resize existing board if dimensions changed
             var existingBoard = boardByDate[date];
             if (existingBoard.GetLength(0) != Rows || existingBoard.GetLength(1) != Columns)
             {
                 var newBoard = new string[Rows, Columns];
-                
-                // Copy existing data
                 for (var r = 0; r < Math.Min(existingBoard.GetLength(0), Rows); r++)
-                {
                     for (var c = 0; c < Math.Min(existingBoard.GetLength(1), Columns); c++)
-                    {
                         newBoard[r, c] = existingBoard[r, c];
-                    }
-                }
-                
                 boardByDate[date] = newBoard;
             }
         }
     }
 
-    private string[,] CurrentBoard 
+    private string[,] CurrentBoard
     {
-        get 
+        get
         {
             EnsureBoardForDate(currentDate);
             return boardByDate[currentDate];
         }
     }
 
-    private string GetColumnHeader(int index)
-    {
-        return index < columnNames.Count ? columnNames[index] : string.Empty;
-    }
+    private string GetColumnHeader(int index) => index < columnNames.Count ? columnNames[index] : string.Empty;
 
-    private string GetCellText(int row, int column)
-    {
-        if (row < Rows && column < Columns)
-        {
-            return CurrentBoard[row, column];
-        }
-        return string.Empty;
-    }
+    private string GetCellText(int row, int column) => (row < Rows && column < Columns) ? CurrentBoard[row, column] : string.Empty;
 
-    private string GetCellClass(int row, int column)
-    {
-        if (dragOverCell.HasValue && dragOverCell.Value.row == row && dragOverCell.Value.col == column)
-        {
-            return "drag-over";
-        }
-        return string.Empty;
-    }
+    private string GetCellClass(int row, int column) =>
+        dragOverCell.HasValue && dragOverCell.Value.row == row && dragOverCell.Value.col == column ? "drag-over" : "";
 
     private async void OnDateChanged(ChangeEventArgs e)
     {
@@ -366,60 +312,44 @@ else if (activeTab == "names")
         }
     }
 
-    private void OnDragStart(DragEventArgs e, string name)
+    // Drag and drop handlers
+    private void OnDragStart(string name)
     {
-        // Store the dragged name in the data transfer
-        e.DataTransfer.SetData("text/plain", name);
-        e.DataTransfer.EffectAllowed = "copy";
-        
-        // Also set it as selected for click-based allocation
-        selectedName = name;
+        draggedName = name;
+        selectedName = name; // Also select for click-based
         StateHasChanged();
     }
 
-    private void OnDragOver(DragEventArgs e)
+    private void OnDragEnd()
     {
-        // Prevent default to allow drop
-        e.PreventDefault();
-        e.DataTransfer.DropEffect = "copy";
+        draggedName = null;
+        dragOverCell = null; // Clear highlight
+        StateHasChanged();
     }
 
-    private async Task OnCellDrop(DragEventArgs e, int row, int column)
+    private async Task OnCellDrop(int row, int column)
     {
-        // Clear drag over highlight
-        dragOverCell = null;
-        
-        // Prevent default behavior
-        e.PreventDefault();
-        
-        // Get the dragged name from data transfer
-        var draggedName = e.DataTransfer.GetData("text/plain");
-        
-        if (!string.IsNullOrEmpty(draggedName) && row < Rows && column < Columns)
+        if (draggedName != null && row < Rows && column < Columns)
         {
-            var board = CurrentBoard;
-            board[row, column] = draggedName;
-            
+            CurrentBoard[row, column] = draggedName;
+            draggedName = null; // Clear after drop
+            dragOverCell = null;
             await SaveToLocalStorage();
             StateHasChanged();
         }
     }
 
+    // Click handler
     private async Task OnCellClick(int row, int column)
     {
         if (row >= Rows || column >= Columns) return;
 
         var board = CurrentBoard;
-        
         if (!string.IsNullOrEmpty(selectedName))
-        {
             board[row, column] = selectedName;
-        }
         else if (!string.IsNullOrEmpty(board[row, column]))
-        {
             board[row, column] = string.Empty;
-        }
-        
+
         await SaveToLocalStorage();
         StateHasChanged();
     }
@@ -428,12 +358,8 @@ else if (activeTab == "names")
     {
         var board = new string[Rows, Columns];
         for (var r = 0; r < Rows; r++)
-        {
             for (var c = 0; c < Columns; c++)
-            {
                 board[r, c] = string.Empty;
-            }
-        }
 
         boardByDate[currentDate] = board;
         await SaveToLocalStorage();
@@ -443,76 +369,39 @@ else if (activeTab == "names")
     private async Task AddRow()
     {
         Rows++;
-        
-        // Update all existing boards to have the new row
-        var updatedBoards = new Dictionary<DateOnly, string[,]>();
-        
+        var updated = new Dictionary<DateOnly, string[,]>();
         foreach (var kvp in boardByDate)
         {
-            var oldBoard = kvp.Value;
-            var newBoard = new string[Rows, Columns];
-            
-            // Copy existing data
-            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
-            {
-                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns); c++)
-                {
-                    newBoard[r, c] = oldBoard[r, c];
-                }
-            }
-            
-            updatedBoards[kvp.Key] = newBoard;
+            var old = kvp.Value;
+            var nb = new string[Rows, Columns];
+            for (int r = 0; r < Math.Min(old.GetLength(0), Rows); r++)
+                for (int c = 0; c < Math.Min(old.GetLength(1), Columns); c++)
+                    nb[r, c] = old[r, c];
+            updated[kvp.Key] = nb;
         }
-        
-        // Clear and update the dictionary
         boardByDate.Clear();
-        foreach (var kvp in updatedBoards)
-        {
-            boardByDate[kvp.Key] = kvp.Value;
-        }
-        
+        foreach (var kvp in updated) boardByDate[kvp.Key] = kvp.Value;
         await SaveToLocalStorage();
         StateHasChanged();
     }
 
     private async Task AddColumnToBoard()
     {
-        if (Columns >= 10)
-        {
-            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
-            return;
-        }
-        
+        if (Columns >= 10) { await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed."); return; }
         Columns++;
         columnNames.Add($"Column {Columns}");
-        
-        // Update all existing boards to have the new column
-        var updatedBoards = new Dictionary<DateOnly, string[,]>();
-        
+        var updated = new Dictionary<DateOnly, string[,]>();
         foreach (var kvp in boardByDate)
         {
-            var oldBoard = kvp.Value;
-            var newBoard = new string[Rows, Columns];
-            
-            // Copy existing data
-            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
-            {
-                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
-                {
-                    newBoard[r, c] = oldBoard[r, c];
-                }
-            }
-            
-            updatedBoards[kvp.Key] = newBoard;
+            var old = kvp.Value;
+            var nb = new string[Rows, Columns];
+            for (int r = 0; r < Math.Min(old.GetLength(0), Rows); r++)
+                for (int c = 0; c < Math.Min(old.GetLength(1), Columns - 1); c++)
+                    nb[r, c] = old[r, c];
+            updated[kvp.Key] = nb;
         }
-        
-        // Clear and update the dictionary
         boardByDate.Clear();
-        foreach (var kvp in updatedBoards)
-        {
-            boardByDate[kvp.Key] = kvp.Value;
-        }
-        
+        foreach (var kvp in updated) boardByDate[kvp.Key] = kvp.Value;
         await SaveToLocalStorage();
         StateHasChanged();
     }
@@ -533,18 +422,12 @@ else if (activeTab == "names")
                 PeopleNames = peopleNames,
                 Rows = Rows,
                 Columns = Columns,
-                Boards = boardByDate.ToDictionary(
-                    kvp => kvp.Key.ToString("yyyy-MM-dd"),
-                    kvp => FlattenBoard(kvp.Value))
+                Boards = boardByDate.ToDictionary(k => k.Key.ToString("yyyy-MM-dd"), k => FlattenBoard(k.Value))
             };
-
             var json = System.Text.Json.JsonSerializer.Serialize(data);
             await JSRuntime.InvokeVoidAsync("localStorage.setItem", "allocationBoardData", json);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error saving to localStorage: {ex.Message}");
-        }
+        catch (Exception ex) { Console.WriteLine($"Save error: {ex.Message}"); }
     }
 
     private async Task LoadFromLocalStorage()
@@ -552,133 +435,83 @@ else if (activeTab == "names")
         try
         {
             var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "allocationBoardData");
-            if (!string.IsNullOrEmpty(json))
+            if (string.IsNullOrEmpty(json)) return;
+            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+            if (data == null) return;
+
+            if (data.TryGetValue("Rows", out var rowsE) && rowsE is System.Text.Json.JsonElement re) Rows = re.GetInt32();
+            if (data.TryGetValue("Columns", out var colsE) && colsE is System.Text.Json.JsonElement ce) Columns = ce.GetInt32();
+
+            if (data.TryGetValue("ColumnNames", out var colNamesE) && colNamesE is System.Text.Json.JsonElement cn)
             {
-                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                if (data != null)
+                columnNames = new List<string>();
+                foreach (var item in cn.EnumerateArray()) columnNames.Add(item.GetString() ?? "");
+            }
+
+            if (data.TryGetValue("PeopleNames", out var peopleE) && peopleE is System.Text.Json.JsonElement pn)
+            {
+                peopleNames = new List<string>();
+                foreach (var item in pn.EnumerateArray()) peopleNames.Add(item.GetString() ?? "");
+            }
+
+            if (data.TryGetValue("Boards", out var boardsE) && boardsE is System.Text.Json.JsonElement be)
+            {
+                boardByDate.Clear();
+                foreach (var board in be.EnumerateObject())
                 {
-                    // Load Rows and Columns first
-                    if (data.TryGetValue("Rows", out var rowsData) && rowsData is System.Text.Json.JsonElement rowsElement)
+                    if (DateOnly.TryParse(board.Name, out var date))
                     {
-                        Rows = rowsElement.GetInt32();
-                    }
-                    
-                    if (data.TryGetValue("Columns", out var columnsData) && columnsData is System.Text.Json.JsonElement columnsElement)
-                    {
-                        Columns = columnsElement.GetInt32();
-                    }
-
-                    if (data.TryGetValue("ColumnNames", out var columnNamesData) && columnNamesData is System.Text.Json.JsonElement columnNamesElement)
-                    {
-                        columnNames = new List<string>();
-                        foreach (var item in columnNamesElement.EnumerateArray())
-                        {
-                            columnNames.Add(item.GetString() ?? "");
-                        }
-                    }
-
-                    if (data.TryGetValue("PeopleNames", out var peopleNamesData) && peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
-                    {
-                        peopleNames = new List<string>();
-                        foreach (var item in peopleNamesElement.EnumerateArray())
-                        {
-                            peopleNames.Add(item.GetString() ?? "");
-                        }
-                    }
-
-                    if (data.TryGetValue("Boards", out var boardsData) && boardsData is System.Text.Json.JsonElement boardsElement)
-                    {
-                        boardByDate.Clear();
-                        foreach (var board in boardsElement.EnumerateObject())
-                        {
-                            if (DateOnly.TryParse(board.Name, out var date))
-                            {
-                                var cells = new List<string>();
-                                foreach (var cell in board.Value.EnumerateArray())
-                                {
-                                    cells.Add(cell.GetString() ?? "");
-                                }
-                                boardByDate[date] = UnflattenBoard(cells);
-                            }
-                        }
+                        var cells = new List<string>();
+                        foreach (var cell in board.Value.EnumerateArray()) cells.Add(cell.GetString() ?? "");
+                        boardByDate[date] = UnflattenBoard(cells);
                     }
                 }
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading from localStorage: {ex.Message}");
-        }
+        catch (Exception ex) { Console.WriteLine($"Load error: {ex.Message}"); }
     }
 
     private List<string> FlattenBoard(string[,] board)
     {
         var list = new List<string>(Rows * Columns);
-        for (var r = 0; r < Rows; r++)
-        {
-            for (var c = 0; c < Columns; c++)
-            {
-                list.Add(board[r, c] ?? string.Empty);
-            }
-        }
+        for (int r = 0; r < Rows; r++)
+            for (int c = 0; c < Columns; c++)
+                list.Add(board[r, c] ?? "");
         return list;
     }
 
     private string[,] UnflattenBoard(List<string> cells)
     {
         var board = new string[Rows, Columns];
-        for (var r = 0; r < Rows; r++)
-        {
-            for (var c = 0; c < Columns; c++)
+        for (int r = 0; r < Rows; r++)
+            for (int c = 0; c < Columns; c++)
             {
-                var index = r * Columns + c;
-                board[r, c] = index < cells.Count ? cells[index] : string.Empty;
+                int idx = r * Columns + c;
+                board[r, c] = idx < cells.Count ? cells[idx] : "";
             }
-        }
         return board;
     }
 
     private async Task AddColumn()
     {
-        if (Columns >= 10)
-        {
-            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
-            return;
-        }
-
+        if (Columns >= 10) { await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed."); return; }
         var result = await JSRuntime.InvokeAsync<string>("prompt", "Enter company name:", $"Company {columnNames.Count + 1}");
         if (!string.IsNullOrWhiteSpace(result))
         {
             Columns++;
             columnNames.Add(result);
-            
-            // Update all existing boards to have the new column
-            var updatedBoards = new Dictionary<DateOnly, string[,]>();
-            
+            var updated = new Dictionary<DateOnly, string[,]>();
             foreach (var kvp in boardByDate)
             {
-                var oldBoard = kvp.Value;
-                var newBoard = new string[Rows, Columns];
-                
-                // Copy existing data
-                for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
-                {
-                    for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
-                    {
-                        newBoard[r, c] = oldBoard[r, c];
-                    }
-                }
-                
-                updatedBoards[kvp.Key] = newBoard;
+                var old = kvp.Value;
+                var nb = new string[Rows, Columns];
+                for (int r = 0; r < Math.Min(old.GetLength(0), Rows); r++)
+                    for (int c = 0; c < Math.Min(old.GetLength(1), Columns - 1); c++)
+                        nb[r, c] = old[r, c];
+                updated[kvp.Key] = nb;
             }
-            
-            // Clear and update the dictionary
             boardByDate.Clear();
-            foreach (var kvp in updatedBoards)
-            {
-                boardByDate[kvp.Key] = kvp.Value;
-            }
-            
+            foreach (var kvp in updated) boardByDate[kvp.Key] = kvp.Value;
             await SaveToLocalStorage();
             StateHasChanged();
         }
@@ -686,46 +519,27 @@ else if (activeTab == "names")
 
     private async Task RemoveColumn(int index)
     {
-        if (index >= 0 && index < columnNames.Count && columnNames.Count > 1)
+        if (index < 0 || index >= columnNames.Count || columnNames.Count <= 1) return;
+        Columns--;
+        columnNames.RemoveAt(index);
+        var updated = new Dictionary<DateOnly, string[,]>();
+        foreach (var kvp in boardByDate)
         {
-            Columns--;
-            columnNames.RemoveAt(index);
-            
-            // Update all existing boards to remove the column
-            var updatedBoards = new Dictionary<DateOnly, string[,]>();
-            
-            foreach (var kvp in boardByDate)
+            var old = kvp.Value;
+            var nb = new string[Rows, Columns];
+            for (int r = 0; r < Rows; r++)
             {
-                var oldBoard = kvp.Value;
-                var newBoard = new string[Rows, Columns];
-                
-                // Copy existing data, skipping the removed column
-                for (var r = 0; r < Rows; r++)
-                {
-                    var newCol = 0;
-                    for (var c = 0; c < oldBoard.GetLength(1); c++)
-                    {
-                        if (c != index && newCol < Columns)
-                        {
-                            newBoard[r, newCol] = oldBoard[r, c];
-                            newCol++;
-                        }
-                    }
-                }
-                
-                updatedBoards[kvp.Key] = newBoard;
+                int newC = 0;
+                for (int c = 0; c < old.GetLength(1); c++)
+                    if (c != index && newC < Columns)
+                        nb[r, newC++] = old[r, c];
             }
-            
-            // Clear and update the dictionary
-            boardByDate.Clear();
-            foreach (var kvp in updatedBoards)
-            {
-                boardByDate[kvp.Key] = kvp.Value;
-            }
-            
-            await SaveToLocalStorage();
-            StateHasChanged();
+            updated[kvp.Key] = nb;
         }
+        boardByDate.Clear();
+        foreach (var kvp in updated) boardByDate[kvp.Key] = kvp.Value;
+        await SaveToLocalStorage();
+        StateHasChanged();
     }
 
     private async Task AddName()
@@ -744,13 +558,8 @@ else if (activeTab == "names")
         if (index >= 0 && index < peopleNames.Count)
         {
             peopleNames.RemoveAt(index);
-            
-            // Clear selected name if it was removed
             if (selectedName != null && !peopleNames.Contains(selectedName))
-            {
                 selectedName = null;
-            }
-            
             await SaveToLocalStorage();
             StateHasChanged();
         }
@@ -761,89 +570,53 @@ else if (activeTab == "names")
         try
         {
             var importData = await JSRuntime.InvokeAsync<string>("prompt", "Paste your WPF data (JSON from %APPDATA%\\AllocationApp\\boards.json):");
-            if (!string.IsNullOrWhiteSpace(importData))
+            if (string.IsNullOrWhiteSpace(importData)) return;
+            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(importData);
+            if (data == null) return;
+
+            if (data.TryGetValue("Rows", out var re) && re is System.Text.Json.JsonElement reJ) Rows = reJ.GetInt32();
+            if (data.TryGetValue("Columns", out var ce) && ce is System.Text.Json.JsonElement ceJ) Columns = ceJ.GetInt32();
+
+            if (data.TryGetValue("ColumnNames", out var cnE) && cnE is System.Text.Json.JsonElement cnJ)
             {
-                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(importData);
-                if (data != null)
+                columnNames = new List<string>();
+                foreach (var i in cnJ.EnumerateArray()) columnNames.Add(i.GetString() ?? "");
+            }
+
+            if (data.TryGetValue("PeopleNames", out var pnE) && pnE is System.Text.Json.JsonElement pnJ)
+            {
+                peopleNames = new List<string>();
+                foreach (var i in pnJ.EnumerateArray()) peopleNames.Add(i.GetString() ?? "");
+            }
+
+            if (data.TryGetValue("Boards", out var bdE) && bdE is System.Text.Json.JsonElement bdJ)
+            {
+                boardByDate.Clear();
+                foreach (var board in bdJ.EnumerateObject())
                 {
-                    // Import Rows and Columns
-                    if (data.TryGetValue("Rows", out var rowsData) && rowsData is System.Text.Json.JsonElement rowsElement)
+                    if (DateOnly.TryParse(board.Name, out var date))
                     {
-                        Rows = rowsElement.GetInt32();
+                        var cells = new List<string>();
+                        foreach (var cell in board.Value.EnumerateArray()) cells.Add(cell.GetString() ?? "");
+                        boardByDate[date] = UnflattenBoard(cells);
                     }
-                    
-                    if (data.TryGetValue("Columns", out var columnsData) && columnsData is System.Text.Json.JsonElement columnsElement)
-                    {
-                        Columns = columnsElement.GetInt32();
-                    }
-
-                    // Import column names
-                    if (data.TryGetValue("ColumnNames", out var columnNamesData) && 
-                        columnNamesData is System.Text.Json.JsonElement columnNamesElement)
-                    {
-                        columnNames = new List<string>();
-                        foreach (var item in columnNamesElement.EnumerateArray())
-                        {
-                            columnNames.Add(item.GetString() ?? "");
-                        }
-                    }
-
-                    // Import people names
-                    if (data.TryGetValue("PeopleNames", out var peopleNamesData) && 
-                        peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
-                    {
-                        peopleNames = new List<string>();
-                        foreach (var item in peopleNamesElement.EnumerateArray())
-                        {
-                            peopleNames.Add(item.GetString() ?? "");
-                        }
-                    }
-
-                    // Import boards
-                    if (data.TryGetValue("Boards", out var boardsData) && 
-                        boardsData is System.Text.Json.JsonElement boardsElement)
-                    {
-                        boardByDate.Clear();
-                        foreach (var board in boardsElement.EnumerateObject())
-                        {
-                            if (DateOnly.TryParse(board.Name, out var date))
-                            {
-                                var cells = new List<string>();
-                                foreach (var cell in board.Value.EnumerateArray())
-                                {
-                                    cells.Add(cell.GetString() ?? "");
-                                }
-                                boardByDate[date] = UnflattenBoard(cells);
-                            }
-                        }
-                    }
-
-                    await SaveToLocalStorage();
-                    StateHasChanged();
                 }
             }
+            await SaveToLocalStorage();
+            StateHasChanged();
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error importing: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("alert", $"Import failed: {ex.Message}");
-        }
+        catch (Exception ex) { Console.WriteLine($"Import error: {ex.Message}"); await JSRuntime.InvokeVoidAsync("alert", $"Import failed: {ex.Message}"); }
     }
 
     private int GetNextDefaultNameIndex()
     {
-        var max = 0;
+        int max = 0;
         foreach (var name in peopleNames)
         {
             const string prefix = "Name-";
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-                int.TryParse(name.AsSpan(prefix.Length), out var n) &&
-                n > max)
-            {
+            if (name.StartsWith(prefix) && int.TryParse(name.Substring(prefix.Length), out int n) && n > max)
                 max = n;
-            }
         }
-
         return max + 1;
     }
 }
