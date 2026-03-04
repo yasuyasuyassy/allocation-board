@@ -10,6 +10,16 @@
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link href="AllocationWebGitHub.styles.css" rel="stylesheet" />
+    
+    <!-- Add this script for drag-and-drop functionality -->
+    <script>
+        window.setDragData = (element, name) => {
+            element.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', name);
+                e.dataTransfer.effectAllowed = 'copy';
+            }, { once: true });
+        };
+    </script>
 </head>
 
 <body>
