@@ -104,9 +104,6 @@
             <h5>All Names</h5>
             <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem;">
                 <ul class="list-group list-group-flush">
-                    @{
-                        var index = 0;
-                    }
                     @foreach (var name in peopleNames)
                     {
                         var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
@@ -119,7 +116,6 @@
                             @onclick="() => OnNameClick(name)">
                             @name
                         </li>
-                        index++;
                     }
                 </ul>
             </div>
