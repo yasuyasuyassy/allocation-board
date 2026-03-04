@@ -1,4 +1,5 @@
 @page "/"
+@using Microsoft.AspNetCore.Components.Web
 
 <PageTitle>Allocation Board</PageTitle>
 
@@ -79,8 +80,10 @@
                             @for (var c = 0; c < Columns; c++)
                             {
                                 <td>
-                                    <button class="btn btn-sm w-100 text-start allocation-cell"
-                                            @onclick="() => OnCellClick(r, c)">
+                                    <button class="btn btn-sm w-100 text-start allocation-cell @(GetCellClass(r, c))"
+                                            @onclick="() => OnCellClick(r, c)"
+                                            @ondragover="OnDragOver"
+                                            @ondrop="(e) => OnCellDrop(e, r, c)">
                                         @GetCellText(r, c)
                                     </button>
                                 </td>
@@ -91,7 +94,7 @@
                 </table>
             </div>
             <small class="text-muted d-block mt-2">
-                Click a name on the right, then click a cell to assign. Click a filled cell with no name selected to clear it.
+                Click a name to select, then click a cell to assign. Or drag and drop names directly into cells!
             </small>
         </div>
 
@@ -104,6 +107,9 @@
                         var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
                         <li class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
                             style="cursor: pointer;"
+                            draggable="true"
+                            @ondragstart="(e) => OnDragStart(e, name)"
+                            @ondragover="OnDragOver"
                             @onclick="() => OnNameClick(name)">
                             @name
                         </li>
@@ -181,6 +187,21 @@ else if (activeTab == "names")
     </div>
 }
 
+<style>
+    .allocation-cell.drag-over {
+        background-color: #e7f5ff !important;
+        border: 2px dashed #0d6efd !important;
+    }
+    
+    .list-group-item[draggable="true"] {
+        user-select: none;
+    }
+    
+    .list-group-item[draggable="true"]:active {
+        opacity: 0.5;
+    }
+</style>
+
 @code {
     private int Rows = 5;
     private int Columns = 4;
@@ -209,6 +230,9 @@ else if (activeTab == "names")
     private readonly Dictionary<DateOnly, string[,]> boardByDate = new();
 
     private string? selectedName;
+    
+    // Track which cell is being dragged over for visual feedback
+    private (int row, int col)? dragOverCell = null;
 
     [Inject]
     private IJSRuntime JSRuntime { get; set; } = default!;
@@ -322,6 +346,15 @@ else if (activeTab == "names")
         return string.Empty;
     }
 
+    private string GetCellClass(int row, int column)
+    {
+        if (dragOverCell.HasValue && dragOverCell.Value.row == row && dragOverCell.Value.col == column)
+        {
+            return "drag-over";
+        }
+        return string.Empty;
+    }
+
     private async void OnDateChanged(ChangeEventArgs e)
     {
         if (e.Value is string s && DateOnly.TryParse(s, out var newDate))
@@ -330,6 +363,45 @@ else if (activeTab == "names")
             EnsureBoardForDate(currentDate);
             StateHasChanged();
             await SaveToLocalStorage();
+        }
+    }
+
+    private void OnDragStart(DragEventArgs e, string name)
+    {
+        // Store the dragged name in the data transfer
+        e.DataTransfer.SetData("text/plain", name);
+        e.DataTransfer.EffectAllowed = "copy";
+        
+        // Also set it as selected for click-based allocation
+        selectedName = name;
+        StateHasChanged();
+    }
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        // Prevent default to allow drop
+        e.PreventDefault();
+        e.DataTransfer.DropEffect = "copy";
+    }
+
+    private async Task OnCellDrop(DragEventArgs e, int row, int column)
+    {
+        // Clear drag over highlight
+        dragOverCell = null;
+        
+        // Prevent default behavior
+        e.PreventDefault();
+        
+        // Get the dragged name from data transfer
+        var draggedName = e.DataTransfer.GetData("text/plain");
+        
+        if (!string.IsNullOrEmpty(draggedName) && row < Rows && column < Columns)
+        {
+            var board = CurrentBoard;
+            board[row, column] = draggedName;
+            
+            await SaveToLocalStorage();
+            StateHasChanged();
         }
     }
 
