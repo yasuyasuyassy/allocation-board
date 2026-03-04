@@ -130,8 +130,7 @@ else if (activeTab == "assign")
                         <span class="input-group-text">Column @(index + 1)</span>
                         <input class="form-control"
                                @bind="columnNames[index]"
-                               @bind:event="oninput"
-                               @oninput="() => OnColumnNameChanged()" />
+                               @bind:event="oninput" />
                         <button class="btn btn-outline-danger"
                                 disabled="@(columnNames.Count <= 1)"
                                 @onclick="() => RemoveColumn(index)">
@@ -165,8 +164,7 @@ else if (activeTab == "names")
                     <div class="input-group mb-2">
                         <input class="form-control"
                                @bind="peopleNames[index]"
-                               @bind:event="oninput"
-                               @oninput="() => OnPeopleNameChanged()" />
+                               @bind:event="oninput" />
                         <button class="btn btn-outline-danger"
                                 @onclick="() => RemoveName(index)">
                             Delete
@@ -684,18 +682,6 @@ else if (activeTab == "names")
             await SaveToLocalStorage();
             StateHasChanged();
         }
-    }
-
-    private async Task OnColumnNameChanged()
-    {
-        await SaveToLocalStorage();
-        StateHasChanged();
-    }
-
-    private async Task OnPeopleNameChanged()
-    {
-        await SaveToLocalStorage();
-        StateHasChanged();
     }
 
     private async Task ImportFromWPF()
