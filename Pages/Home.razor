@@ -5,25 +5,27 @@
 
 <h1 class="mb-4">Allocation Board</h1>
 
-<ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <button class='@GetTabCss("home")'
-                @onclick="ActivateHome">
-            Home
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class='@GetTabCss("assign")'
-                @onclick="ActivateAssign">
-            配属
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class='@GetTabCss("names")'
-                @onclick="ActivateNames">
-            Name
-        </button>
-    </li>
+<ul class="list-group list-group-flush">
+    @{
+        var refs = new Dictionary<string, ElementReference>();
+    }
+    @foreach (var name in peopleNames)
+    {
+        var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
+        <li @ref="(element) => refs[name] = element"
+            class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
+            style="cursor: pointer;"
+            draggable="true"
+            @ondragstart="(e) => OnDragStart(name, refs[name])"
+            @ondragend="OnDragEnd"
+            @onclick="() => OnNameClick(name)">
+            @name
+        </li>
+    }
+    @code {
+        // After rendering, store the references in a field for later use? Actually we don't need them after dragstart.
+        // But we need them during the dragstart event, which happens after render, so the dictionary is built.
+    }
 </ul>
 
 @if (activeTab == "home")
@@ -209,7 +211,8 @@ else if (activeTab == "names")
     private string activeTab = "home";
 
     private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
-
+    private List<ElementReference> nameElements = new();
+    private Dictionary<string, ElementReference> nameElementRefs = new();
     private List<string> columnNames = new()
     {
         "Column 1",
@@ -313,11 +316,12 @@ else if (activeTab == "names")
     }
 
     // Drag and drop handlers
-    private void OnDragStart(string name)
+    private async Task OnDragStart(string name, ElementReference element)
     {
-        draggedName = name;
-        selectedName = name; // Also select for click-based
-        StateHasChanged();
+    draggedName = name;
+    selectedName = name;
+    await JSRuntime.InvokeVoidAsync("setDragData", element, name);
+    StateHasChanged();
     }
 
     private void OnDragEnd()
