@@ -319,30 +319,56 @@ else if (activeTab == "names")
     }
 
     private async Task OnDragStart(string name)
+{
+    Console.WriteLine($"OnDragStart: {name}");
+    _dropOccurred = false; // reset flag
+    draggedName = name;
+    selectedName = name;
+    
+    if (nameElementRefs.TryGetValue(name, out var element))
     {
-        draggedName = name;
-        selectedName = name;
-        
-        if (nameElementRefs.TryGetValue(name, out var element))
-        {
-            await JSRuntime.InvokeVoidAsync("setDragData", element, name);
-        }
-        
-        StateHasChanged();
+        Console.WriteLine($"Found element ref for {name}, calling JS");
+        await JSRuntime.InvokeVoidAsync("setDragData", element, name);
     }
-
-    private void OnDragEnd()
+    else
     {
+        Console.WriteLine($"No element ref found for {name}");
+    }
+    
+    StateHasChanged();
+}
+
+private void OnDragEnd()
+{
+    Console.WriteLine($"OnDragEnd, draggedName={draggedName}, dropOccurred={_dropOccurred}");
+    if (!_dropOccurred)
+    {
+        // Drag was cancelled or ended without drop
         draggedName = null;
         dragOverCell = null;
-        StateHasChanged();
     }
+    _dropOccurred = false; // reset for next drag
+    StateHasChanged();
+}
 
-    private void SetDragOverCell(int row, int col)
+private async Task OnCellDrop(int row, int column)
+{
+    Console.WriteLine($"OnCellDrop: ({row},{column}), draggedName={draggedName}");
+    if (draggedName != null && row < Rows && column < Columns)
     {
-        dragOverCell = (row, col);
+        CurrentBoard[row, column] = draggedName;
+        _dropOccurred = true; // mark that drop happened
+        draggedName = null;    // clear after use
+        dragOverCell = null;
+        await SaveToLocalStorage();
         StateHasChanged();
+        Console.WriteLine("Drop successful");
     }
+    else
+    {
+        Console.WriteLine("Drop failed: draggedName null or out of bounds");
+    }
+}
 
     private void ClearDragOverCell()
     {
