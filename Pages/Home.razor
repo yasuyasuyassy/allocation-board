@@ -1,20 +1,49 @@
 @page "/home"
 
-@inject NavigationManager NavigationManager
+@using System.Diagnostics;
+@using Microsoft.AspNetCore.Components;
+@using Microsoft.AspNetCore.Components.Web;
+
+<h3>Home</h3>
+
+<div>
+    <h2>Drag and Drop Example</h2>
+    <div
+        @ondragstart="OnDragStart"
+        @ondragend="OnDragEnd"
+        @ondragover="OnDragOver"
+        @ondrop="OnDrop"
+        style="border: solid 1px black; height: 200px; width: 200px;">
+        Drag Here
+    </div>
+</div>
 
 @code {
-    // Other code...
+    ElementReference nameElementRef;
 
-    private void SetNameElementRef()
+    private void SetNameElementRef(ElementReference reference)
     {
-        // Original logic of the first duplicate method...
+        nameElementRef = reference;
     }
 
-    private void SetNameElementRef()
+    private void OnDragStart(DragEventArgs e)
     {
-        // Logic that includes logging...
-        Console.WriteLine("Logging from SetNameElementRef");
+        Console.WriteLine("[DragStart] Dragging started");
+    }
+
+    private void OnDragEnd(DragEventArgs e)
+    {
+        Console.WriteLine("[DragEnd] Dragging ended");
+    }
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        e.PreventDefault();
+        Console.WriteLine("[DragOver] Dragging over the drop zone");
+    }
+
+    private void OnDrop(DragEventArgs e)
+    {
+        Console.WriteLine("[Drop] Item dropped");
     }
 }
-
-@* Remaining code... *@
