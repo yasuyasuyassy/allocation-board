@@ -322,19 +322,21 @@ else if (activeTab == "names")
 
     private async Task OnDragStart(string name)
 {
-    Console.WriteLine($"OnDragStart: {name}");
-    _dropOccurred = false; // reset flag
+    Console.WriteLine($"[DragStart] name={name}");
+    _dropOccurred = false;
     draggedName = name;
     selectedName = name;
     
     if (nameElementRefs.TryGetValue(name, out var element))
     {
-        Console.WriteLine($"Found element ref for {name}, calling JS");
+        Console.WriteLine($"[DragStart] element ref found, calling JS for {name}");
         await JSRuntime.InvokeVoidAsync("setDragData", element, name);
     }
     else
     {
-        Console.WriteLine($"No element ref found for {name}");
+        Console.WriteLine($"[DragStart] NO element ref found for {name}");
+        // List all available refs for debugging
+        Console.WriteLine($"[DragStart] Available refs: {string.Join(", ", nameElementRefs.Keys)}");
     }
     
     StateHasChanged();
@@ -342,67 +344,58 @@ else if (activeTab == "names")
 
 private void OnDragEnd()
 {
-    Console.WriteLine($"OnDragEnd, draggedName={draggedName}, dropOccurred={_dropOccurred}");
+    Console.WriteLine($"[DragEnd] draggedName={draggedName}, dropOccurred={_dropOccurred}");
     if (!_dropOccurred)
     {
-        // Drag was cancelled or ended without drop
+        // Drag ended without a drop - clear the dragged name
         draggedName = null;
         dragOverCell = null;
+        Console.WriteLine($"[DragEnd] cleared draggedName (no drop occurred)");
     }
-    _dropOccurred = false; // reset for next drag
     StateHasChanged();
+}
+
+private void SetDragOverCell(int row, int col)
+{
+    dragOverCell = (row, col);
+    StateHasChanged();
+    Console.WriteLine($"[DragOver] cell ({row},{col}) highlighted");
+}
+
+private void ClearDragOverCell()
+{
+    dragOverCell = null;
+    StateHasChanged();
+    Console.WriteLine($"[DragOver] cleared");
 }
 
 private async Task OnCellDrop(int row, int column)
 {
-    Console.WriteLine($"OnCellDrop: ({row},{column}), draggedName={draggedName}");
+    Console.WriteLine($"[Drop] ATTEMPT on cell ({row},{column}), draggedName={draggedName}");
+    
     if (draggedName != null && row < Rows && column < Columns)
     {
         CurrentBoard[row, column] = draggedName;
-        _dropOccurred = true; // mark that drop happened
-        draggedName = null;    // clear after use
-        dragOverCell = null;
+        _dropOccurred = true;
         await SaveToLocalStorage();
+        Console.WriteLine($"[Drop] SUCCESS: assigned '{draggedName}' to cell ({row},{column})");
+        draggedName = null;
+        dragOverCell = null;
         StateHasChanged();
-        Console.WriteLine("Drop successful");
     }
     else
     {
-        Console.WriteLine("Drop failed: draggedName null or out of bounds");
+        Console.WriteLine($"[Drop] FAILED - Reason: " + 
+            (draggedName == null ? "draggedName is null" : $"out of bounds (max rows={Rows}, cols={Columns})"));
     }
 }
 
-    private void ClearDragOverCell()
-    {
-        dragOverCell = null;
-        StateHasChanged();
-    }
-
-    private async Task OnCellDrop(int row, int column)
-    {
-        if (draggedName != null && row < Rows && column < Columns)
-        {
-            CurrentBoard[row, column] = draggedName;
-            draggedName = null;
-            dragOverCell = null;
-            await SaveToLocalStorage();
-            StateHasChanged();
-        }
-    }
-
-    private async Task OnCellClick(int row, int column)
-    {
-        if (row >= Rows || column >= Columns) return;
-
-        var board = CurrentBoard;
-        if (!string.IsNullOrEmpty(selectedName))
-            board[row, column] = selectedName;
-        else if (!string.IsNullOrEmpty(board[row, column]))
-            board[row, column] = string.Empty;
-
-        await SaveToLocalStorage();
-        StateHasChanged();
-    }
+// Add this method to verify element references are being captured
+private void SetNameElementRef(string name, ElementReference element)
+{
+    nameElementRefs[name] = element;
+    Console.WriteLine($"[Ref] Captured element ref for '{name}'");
+}
 
     private async Task ReloadCurrentBoard()
     {
