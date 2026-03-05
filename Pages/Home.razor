@@ -1,49 +1,43 @@
 @page "/home"
 
-@using System.Diagnostics;
-@using Microsoft.AspNetCore.Components;
-@using Microsoft.AspNetCore.Components.Web;
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JSRuntime
 
-<h3>Home</h3>
-
-<div>
-    <h2>Drag and Drop Example</h2>
-    <div
-        @ondragstart="OnDragStart"
-        @ondragend="OnDragEnd"
-        @ondragover="OnDragOver"
-        @ondrop="OnDrop"
-        style="border: solid 1px black; height: 200px; width: 200px;">
-        Drag Here
-    </div>
-</div>
+<h1>Home</h1>
 
 @code {
-    ElementReference nameElementRef;
+    private ElementReference nameElement;
+    private string name;
 
-    private void SetNameElementRef(ElementReference reference)
-    {
-        nameElementRef = reference;
-    }
-
-    private void OnDragStart(DragEventArgs e)
-    {
+    // Debug logging for drag and drop events
+    private void OnDragStart() {
         Console.WriteLine("[DragStart] Dragging started");
     }
 
-    private void OnDragEnd(DragEventArgs e)
-    {
+    private void OnDragEnd() {
         Console.WriteLine("[DragEnd] Dragging ended");
     }
 
-    private void OnDragOver(DragEventArgs e)
-    {
-        e.PreventDefault();
-        Console.WriteLine("[DragOver] Dragging over the drop zone");
+    private void OnDragOver() {
+        Console.WriteLine("[DragOver] Dragging over element");
     }
 
-    private void OnDrop(DragEventArgs e)
-    {
+    private void OnDrop() {
         Console.WriteLine("[Drop] Item dropped");
     }
+
+    private void SetNameElementRef(ElementReference element) {
+        nameElement = element;
+        Console.WriteLine("[Ref] Name element reference set");
+    }
+
+    private void HandleNameChange(ChangeEventArgs e) {
+        name = e.Value.ToString();
+    }
+
+    private void LogName() {
+        Console.WriteLine($"Current name: {name}");
+    }
+
+    // Removing the duplicate SetNameElementRef method
 }
