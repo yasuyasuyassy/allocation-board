@@ -5,6 +5,43 @@
 
 <h1>Home</h1>
 
+<!-- 1. Input Section -->
+<div style="margin-bottom: 30px;">
+    <label for="nameInput">Name: </label>
+    <input id="nameInput" 
+           type="text" 
+           @ref="SetNameElementRef" 
+           @oninput="HandleNameChange" 
+           placeholder="Type a name..." />
+    
+    <button @onclick="LogName">Log Name</button>
+    
+    <p>Live output: <strong>@name</strong></p>
+</div>
+
+<!-- 2. Drag and Drop Section -->
+<div style="display: flex; gap: 20px;">
+    
+    <!-- Draggable Item -->
+    <!-- The 'draggable="true"' attribute is required for HTML5 drag and drop -->
+    <div draggable="true" 
+         @ondragstart="OnDragStart" 
+         @ondragend="OnDragEnd"
+         style="width: 150px; height: 100px; background-color: #0078d4; color: white; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: grab;">
+        Drag Me!
+    </div>
+
+    <!-- Drop Zone -->
+    <!-- Important: You MUST prevent default behavior on drag over, otherwise the drop event won't fire -->
+    <div @ondragover="OnDragOver" 
+         @ondrop="OnDrop"
+         @ondragover:preventDefault="true" 
+         style="width: 200px; height: 150px; border: 2px dashed #666; display: flex; align-items: center; justify-content: center; border-radius: 8px; background-color: #f9f9f9;">
+        Drop Here!
+    </div>
+
+</div>
+
 @code {
     private ElementReference nameElement;
     private string name;
@@ -32,12 +69,10 @@
     }
 
     private void HandleNameChange(ChangeEventArgs e) {
-        name = e.Value.ToString();
+        name = e.Value?.ToString();
     }
 
     private void LogName() {
         Console.WriteLine($"Current name: {name}");
     }
-
-    // Removing the duplicate SetNameElementRef method
 }
