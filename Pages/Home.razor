@@ -3,76 +3,94 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject IJSRuntime JSRuntime
 
-<h1>Home</h1>
+<h1>Allocation Board - Home</h1>
 
 <!-- 1. Input Section -->
-<div style="margin-bottom: 30px;">
+<div style="margin-bottom: 30px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
     <label for="nameInput">Name: </label>
     <input id="nameInput" 
            type="text" 
-           @ref="SetNameElementRef" 
+           @ref="nameElement" 
            @oninput="HandleNameChange" 
-           placeholder="Type a name..." />
+           placeholder="Type a name..." 
+           style="padding: 5px; border-radius: 4px; border: 1px solid #ccc;" />
     
-    <button @onclick="LogName">Log Name</button>
+    <button @onclick="LogName" style="padding: 5px 15px; cursor: pointer;">Log Name</button>
     
-    <p>Live output: <strong>@name</strong></p>
+    <p>Live output: <span style="color: #0078d4; font-weight: bold;">@name</span></p>
 </div>
 
 <!-- 2. Drag and Drop Section -->
-<div style="display: flex; gap: 20px;">
+<div style="display: flex; gap: 20px; align-items: flex-start;">
     
     <!-- Draggable Item -->
-    <!-- The 'draggable="true"' attribute is required for HTML5 drag and drop -->
     <div draggable="true" 
-         @ondragstart="OnDragStart" 
-         @ondragend="OnDragEnd"
-         style="width: 150px; height: 100px; background-color: #0078d4; color: white; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: grab;">
-        Drag Me!
+         @ondragstart="HandleDragStart" 
+         @ondragend="HandleDragEnd"
+         style="width: 150px; height: 100px; background-color: @(isDragging ? "#005a9e" : "#0078d4"); 
+                opacity: @(isDragging ? "0.5" : "1");
+                color: white; display: flex; align-items: center; justify-content: center; 
+                border-radius: 8px; cursor: grab; transition: all 0.2s;">
+        @(isDragging ? "Dragging..." : "Drag Me!")
     </div>
 
     <!-- Drop Zone -->
-    <!-- Important: You MUST prevent default behavior on drag over, otherwise the drop event won't fire -->
-    <div @ondragover="OnDragOver" 
-         @ondrop="OnDrop"
+    <div @ondragover="HandleDragOver" 
+         @ondrop="HandleDrop"
          @ondragover:preventDefault="true" 
-         style="width: 200px; height: 150px; border: 2px dashed #666; display: flex; align-items: center; justify-content: center; border-radius: 8px; background-color: #f9f9f9;">
-        Drop Here!
+         style="width: 200px; height: 150px; border: 2px dashed @(isOverDropZone ? "#0078d4" : "#666"); 
+                display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                border-radius: 8px; background-color: @(isOverDropZone ? "#e1f0fe" : "#f9f9f9");
+                transition: background-color 0.2s;">
+        
+        <p>@dropStatus</p>
+        @if (!string.IsNullOrEmpty(lastDroppedItem))
+        {
+            <span style="font-size: 0.8rem; color: green;">Dropped: @lastDroppedItem</span>
+        }
     </div>
 
 </div>
 
 @code {
     private ElementReference nameElement;
-    private string name;
-
-    // Debug logging for drag and drop events
-    private void OnDragStart() {
-        Console.WriteLine("[DragStart] Dragging started");
-    }
-
-    private void OnDragEnd() {
-        Console.WriteLine("[DragEnd] Dragging ended");
-    }
-
-    private void OnDragOver() {
-        Console.WriteLine("[DragOver] Dragging over element");
-    }
-
-    private void OnDrop() {
-        Console.WriteLine("[Drop] Item dropped");
-    }
-
-    private void SetNameElementRef(ElementReference element) {
-        nameElement = element;
-        Console.WriteLine("[Ref] Name element reference set");
-    }
+    private string name = "";
+    private string dropStatus = "Drop Here!";
+    private string lastDroppedItem = "";
+    private bool isDragging = false;
+    private bool isOverDropZone = false;
 
     private void HandleNameChange(ChangeEventArgs e) {
-        name = e.Value?.ToString();
+        name = e.Value?.ToString() ?? "";
     }
 
     private void LogName() {
         Console.WriteLine($"Current name: {name}");
+    }
+
+    // --- Drag and Drop Logic ---
+
+    private void HandleDragStart(DragEventArgs e) {
+        isDragging = true;
+        dropStatus = "Bring it here!";
+    }
+
+    private void HandleDragEnd(DragEventArgs e) {
+        isDragging = false;
+        if (!isOverDropZone) dropStatus = "Drop Here!";
+    }
+
+    private void HandleDragOver(DragEventArgs e) {
+        isOverDropZone = true;
+    }
+
+    private void HandleDrop(DragEventArgs e) {
+        isOverDropZone = false;
+        isDragging = false;
+        lastDroppedItem = "The blue box";
+        dropStatus = "Successfully Dropped!";
+        
+        // This tells Blazor to refresh the UI immediately
+        StateHasChanged(); 
     }
 }
