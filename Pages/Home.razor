@@ -1,96 +1,686 @@
-@page "/home"
+@page "/"
 
-@using Microsoft.AspNetCore.Components.Web
-@inject IJSRuntime JSRuntime
+<PageTitle>Allocation Board</PageTitle>
 
-<h1>Allocation Board - Home</h1>
+<h1 class="mb-4">Allocation Board</h1>
 
-<!-- 1. Input Section -->
-<div style="margin-bottom: 30px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-    <label for="nameInput">Name: </label>
-    <input id="nameInput" 
-           type="text" 
-           @ref="nameElement" 
-           @oninput="HandleNameChange" 
-           placeholder="Type a name..." 
-           style="padding: 5px; border-radius: 4px; border: 1px solid #ccc;" />
-    
-    <button @onclick="LogName" style="padding: 5px 15px; cursor: pointer;">Log Name</button>
-    
-    <p>Live output: <span style="color: #0078d4; font-weight: bold;">@name</span></p>
-</div>
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class='@GetTabCss("home")'
+                @onclick="ActivateHome">
+            Home
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("assign")'
+                @onclick="ActivateAssign">
+            配属
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class='@GetTabCss("names")'
+                @onclick="ActivateNames">
+            Name
+        </button>
+    </li>
+</ul>
 
-<!-- 2. Drag and Drop Section -->
-<div style="display: flex; gap: 20px; align-items: flex-start;">
-    
-    <!-- Draggable Item -->
-    <div draggable="true" 
-         @ondragstart="HandleDragStart" 
-         @ondragend="HandleDragEnd"
-         style="width: 150px; height: 100px; background-color: @(isDragging ? "#005a9e" : "#0078d4"); 
-                opacity: @(isDragging ? "0.5" : "1");
-                color: white; display: flex; align-items: center; justify-content: center; 
-                border-radius: 8px; cursor: grab; transition: all 0.2s;">
-        @(isDragging ? "Dragging..." : "Drag Me!")
+@if (activeTab == "home")
+{
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <h5>Calendar</h5>
+            <input type="date"
+                   class="form-control mb-2"
+                   value="@currentDate.ToString("yyyy-MM-dd")"
+                   @onchange="OnDateChanged" />
+            <small class="text-muted">
+                Each date keeps its own board layout while the app is running.
+            </small>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-bold">
+                    @currentDate.ToString("yyyy-MM-dd")
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-success me-2" @onclick="AddRow">
+                        + Row
+                    </button>
+                    <button class="btn btn-sm btn-outline-success me-2" @onclick="AddColumnToBoard">
+                        + Column
+                    </button>
+                    <button class="btn btn-sm btn-outline-info me-2" @onclick="ImportFromWPF">
+                        Import from WPF
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary me-2" @onclick="ReloadCurrentBoard">
+                        Reload
+                    </button>
+                </div>
+            </div>
+
+            <div class="border rounded bg-white p-2" style="max-height: 400px; overflow: auto;">
+                <table class="table table-bordered mb-0 align-middle text-center">
+                    <thead class="table-light" style="position: sticky; top: 0; background: white; z-index: 1;">
+                    <tr>
+                        <th style="width: 120px;">Time / Row</th>
+                        @for (var c = 0; c < Columns; c++)
+                        {
+                            <th>@GetColumnHeader(c)</th>
+                        }
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @for (var r = 0; r < Rows; r++)
+                    {
+                        <tr>
+                            <th class="table-light text-start">Row @(r + 1)</th>
+                            @for (var c = 0; c < Columns; c++)
+                            {
+                                <td>
+                                    <button class="btn btn-sm w-100 text-start allocation-cell"
+                                            @onclick="() => OnCellClick(r, c)">
+                                        @GetCellText(r, c)
+                                    </button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <small class="text-muted d-block mt-2">
+                Click a name on the right, then click a cell to assign. Click a filled cell with no name selected to clear it.
+            </small>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <h5>All Names</h5>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem;">
+                <ul class="list-group list-group-flush">
+                    @foreach (var name in peopleNames)
+                    {
+                        var isSelected = string.Equals(selectedName, name, StringComparison.Ordinal);
+                        <li class="list-group-item list-group-item-action @((isSelected ? "active" : string.Empty))"
+                            style="cursor: pointer;"
+                            @onclick="() => OnNameClick(name)">
+                            @name
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
     </div>
+}
+else if (activeTab == "assign")
+{
+    <div class="row">
+        <div class="col-md-8">
+            <h5>配属 (Columns)</h5>
+            <p class="text-muted">
+                Edit the column names used on the board.
+            </p>
 
-    <!-- Drop Zone -->
-    <div @ondragover="HandleDragOver" 
-         @ondrop="HandleDrop"
-         @ondragover:preventDefault="true" 
-         style="width: 200px; height: 150px; border: 2px dashed @(isOverDropZone ? "#0078d4" : "#666"); 
-                display: flex; flex-direction: column; align-items: center; justify-content: center; 
-                border-radius: 8px; background-color: @(isOverDropZone ? "#e1f0fe" : "#f9f9f9");
-                transition: background-color 0.2s;">
-        
-        <p>@dropStatus</p>
-        @if (!string.IsNullOrEmpty(lastDroppedItem))
-        {
-            <span style="font-size: 0.8rem; color: green;">Dropped: @lastDroppedItem</span>
-        }
+            <div style="max-height: 400px; overflow-y: auto; margin-bottom: 10px;">
+                @for (var i = 0; i < columnNames.Count; i++)
+                {
+                    var index = i;
+                    <div class="input-group mb-2">
+                        <span class="input-group-text">Column @(index + 1)</span>
+                        <input class="form-control"
+                               @bind="columnNames[index]"
+                               @bind:event="oninput" />
+                        <button class="btn btn-outline-danger"
+                                disabled="@(columnNames.Count <= 1)"
+                                @onclick="() => RemoveColumn(index)">
+                            Delete
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <button class="btn btn-outline-primary mt-2"
+                    disabled="@(columnNames.Count >= 10)"
+                    @onclick="AddColumn">
+                Add Column
+            </button>
+        </div>
     </div>
+}
+else if (activeTab == "names")
+{
+    <div class="row">
+        <div class="col-md-8">
+            <h5>Name list</h5>
+            <p class="text-muted">
+                Manage the master list of names. These appear on the Home tab.
+            </p>
 
-</div>
+            <div style="max-height: 400px; overflow-y: auto; margin-bottom: 10px;">
+                @for (var i = 0; i < peopleNames.Count; i++)
+                {
+                    var index = i;
+                    <div class="input-group mb-2">
+                        <input class="form-control"
+                               @bind="peopleNames[index]"
+                               @bind:event="oninput" />
+                        <button class="btn btn-outline-danger"
+                                @onclick="() => RemoveName(index)">
+                            Delete
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <button class="btn btn-outline-primary mt-2"
+                    @onclick="AddName">
+                Add Name
+            </button>
+        </div>
+    </div>
+}
 
 @code {
-    private ElementReference nameElement;
-    private string name = "";
-    private string dropStatus = "Drop Here!";
-    private string lastDroppedItem = "";
-    private bool isDragging = false;
-    private bool isOverDropZone = false;
+    private int Rows = 5;
+    private int Columns = 4;
 
-    private void HandleNameChange(ChangeEventArgs e) {
-        name = e.Value?.ToString() ?? "";
+    private string activeTab = "home";
+
+    private DateOnly currentDate = DateOnly.FromDateTime(DateTime.Today);
+
+    private readonly List<string> columnNames = new()
+    {
+        "Column 1",
+        "Column 2",
+        "Column 3",
+        "Column 4"
+    };
+
+    private readonly List<string> peopleNames = new()
+    {
+        "Name-1",
+        "Name-2",
+        "Name-3",
+        "Name-4",
+        "Name-5"
+    };
+
+    private readonly Dictionary<DateOnly, string[,]> boardByDate = new();
+
+    private string? selectedName;
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFromLocalStorage();
+        EnsureBoardForDate(currentDate);
     }
 
-    private void LogName() {
-        Console.WriteLine($"Current name: {name}");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Component is ready
+        }
     }
 
-    // --- Drag and Drop Logic ---
-
-    private void HandleDragStart(DragEventArgs e) {
-        isDragging = true;
-        dropStatus = "Bring it here!";
+    private void SetActiveTab(string tab)
+    {
+        activeTab = tab;
     }
 
-    private void HandleDragEnd(DragEventArgs e) {
-        isDragging = false;
-        if (!isOverDropZone) dropStatus = "Drop Here!";
+    private void ActivateHome() => SetActiveTab("home");
+
+    private void ActivateAssign() => SetActiveTab("assign");
+
+    private void ActivateNames() => SetActiveTab("names");
+
+    private string GetTabCss(string tab)
+    {
+        return activeTab == tab ? "nav-link active" : "nav-link";
     }
 
-    private void HandleDragOver(DragEventArgs e) {
-        isOverDropZone = true;
+    private void EnsureBoardForDate(DateOnly date)
+    {
+        if (!boardByDate.ContainsKey(date))
+        {
+            var board = new string[Rows, Columns];
+            for (var r = 0; r < Rows; r++)
+            {
+                for (var c = 0; c < Columns; c++)
+                {
+                    board[r, c] = string.Empty;
+                }
+            }
+
+            boardByDate[date] = board;
+        }
+        else
+        {
+            // Resize existing board if dimensions changed
+            var existingBoard = boardByDate[date];
+            if (existingBoard.GetLength(0) != Rows || existingBoard.GetLength(1) != Columns)
+            {
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data
+                for (var r = 0; r < Math.Min(existingBoard.GetLength(0), Rows); r++)
+                {
+                    for (var c = 0; c < Math.Min(existingBoard.GetLength(1), Columns); c++)
+                    {
+                        newBoard[r, c] = existingBoard[r, c];
+                    }
+                }
+                
+                boardByDate[date] = newBoard;
+            }
+        }
     }
 
-    private void HandleDrop(DragEventArgs e) {
-        isOverDropZone = false;
-        isDragging = false;
-        lastDroppedItem = "The blue box";
-        dropStatus = "Successfully Dropped!";
+    private string[,] CurrentBoard 
+{
+    get 
+    {
+        if (boardByDate.TryGetValue(currentDate, out var board))
+        {
+            return board;
+        }
+        // Return a temporary empty board so the UI doesn't crash
+        return new string[Rows, Columns];
+    }
+}
+    
+
+    private string GetColumnHeader(int index)
+    {
+        return index < columnNames.Count ? columnNames[index] : string.Empty;
+    }
+
+    private string GetCellText(int row, int column)
+    {
+        return CurrentBoard[row, column];
+    }
+
+    private void OnDateChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string s && DateOnly.TryParse(s, out var newDate))
+        {
+            currentDate = newDate;
+            EnsureBoardForDate(currentDate);
+        }
+    }
+    private async Task OnCellClick(int row, int column)
+{
+    var board = CurrentBoard;
+    // Safety check: Ensure the clicked cell is actually within the current array bounds
+    if (row >= board.GetLength(0) || column >= board.GetLength(1)) return;
+
+    if (!string.IsNullOrEmpty(selectedName))
+    {
+        board[row, column] = selectedName;
+    }
+    else if (!string.IsNullOrEmpty(board[row, column]))
+    {
+        board[row, column] = string.Empty;
+    }
+    await SaveToLocalStorage();
+}
+
+    private async Task ReloadCurrentBoard()
+    {
+        var board = new string[Rows, Columns];
+        for (var r = 0; r < Rows; r++)
+        {
+            for (var c = 0; c < Columns; c++)
+            {
+                board[r, c] = string.Empty;
+            }
+        }
+
+        boardByDate[currentDate] = board;
+        await SaveToLocalStorage();
+    }
+
+    private async Task AddRow()
+    {
+        Rows++;
+        // Update all existing boards to have the new row
+        foreach (var kvp in boardByDate)
+        {
+            var oldBoard = kvp.Value;
+            var newBoard = new string[Rows, Columns];
+            
+            // Copy existing data
+            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+            {
+                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns); c++)
+                {
+                    newBoard[r, c] = oldBoard[r, c];
+                }
+            }
+            
+            boardByDate[kvp.Key] = newBoard;
+        }
         
-        // This tells Blazor to refresh the UI immediately
-        StateHasChanged(); 
+        // Ensure current date has the updated board
+        EnsureBoardForDate(currentDate);
+        await SaveToLocalStorage();
+    }
+
+    private async Task AddColumnToBoard()
+    {
+        if (Columns >= 10) // Limit to prevent too wide boards
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
+            return;
+        }
+        
+        Columns++;
+        columnNames.Add($"Column {Columns}");
+        
+        // Update all existing boards to have the new column
+        foreach (var kvp in boardByDate)
+        {
+            var oldBoard = kvp.Value;
+            var newBoard = new string[Rows, Columns];
+            
+            // Copy existing data
+            for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+            {
+                for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
+                {
+                    newBoard[r, c] = oldBoard[r, c];
+                }
+            }
+            
+            boardByDate[kvp.Key] = newBoard;
+        }
+        
+        // Ensure current date has the updated board
+        EnsureBoardForDate(currentDate);
+        await SaveToLocalStorage();
+    }
+
+    private void OnNameClick(string name)
+    {
+        selectedName = selectedName == name ? null : name;
+    }
+
+    private async Task SaveToLocalStorage()
+    {
+        try
+        {
+            var data = new
+            {
+                ColumnNames = columnNames,
+                PeopleNames = peopleNames,
+                Boards = boardByDate.ToDictionary(
+                    kvp => kvp.Key.ToString("yyyy-MM-dd"),
+                    kvp => FlattenBoard(kvp.Value))
+            };
+
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "allocationBoardData", System.Text.Json.JsonSerializer.Serialize(data));
+        }
+        catch
+        {
+            // Ignore storage errors
+        }
+    }
+
+    private async Task LoadFromLocalStorage()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "allocationBoardData");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+                if (data != null)
+                {
+                    if (data.TryGetValue("ColumnNames", out var columnNamesData) && columnNamesData is System.Text.Json.JsonElement columnNamesElement)
+                    {
+                        columnNames.Clear();
+                        foreach (var item in columnNamesElement.EnumerateArray())
+                        {
+                            columnNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    if (data.TryGetValue("PeopleNames", out var peopleNamesData) && peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
+                    {
+                        peopleNames.Clear();
+                        foreach (var item in peopleNamesElement.EnumerateArray())
+                        {
+                            peopleNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    if (data.TryGetValue("Boards", out var boardsData) && boardsData is System.Text.Json.JsonElement boardsElement)
+                    {
+                        boardByDate.Clear();
+                        foreach (var board in boardsElement.EnumerateObject())
+                        {
+                            if (DateOnly.TryParse(board.Name, out var date))
+                            {
+                                var cells = new List<string>();
+                                foreach (var cell in board.Value.EnumerateArray())
+                                {
+                                    cells.Add(cell.GetString() ?? "");
+                                }
+                                boardByDate[date] = UnflattenBoard(cells);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore load errors
+        }
+    }
+
+    private List<string> FlattenBoard(string[,] board)
+    {
+        var list = new List<string>(Rows * Columns);
+        for (var r = 0; r < Rows; r++)
+        {
+            for (var c = 0; c < Columns; c++)
+            {
+                list.Add(board[r, c] ?? string.Empty);
+            }
+        }
+        return list;
+    }
+
+    private string[,] UnflattenBoard(List<string> cells)
+    {
+        var board = new string[Rows, Columns];
+        for (var r = 0; r < Rows; r++)
+        {
+            for (var c = 0; c < Columns; c++)
+            {
+                var index = r * Columns + c;
+                board[r, c] = index < cells.Count ? cells[index] : string.Empty;
+            }
+        }
+        return board;
+    }
+
+    private async Task AddColumn()
+    {
+        if (Columns >= 10) // Limit to prevent too wide boards
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Maximum 10 columns allowed.");
+            return;
+        }
+
+        var result = await JSRuntime.InvokeAsync<string>("prompt", "Enter company name:", $"Company {columnNames.Count + 1}");
+        if (!string.IsNullOrWhiteSpace(result))
+        {
+            Columns++;
+            columnNames.Add(result);
+            
+            // Update all existing boards to have the new column
+            foreach (var kvp in boardByDate)
+            {
+                var oldBoard = kvp.Value;
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data
+                for (var r = 0; r < Math.Min(oldBoard.GetLength(0), Rows); r++)
+                {
+                    for (var c = 0; c < Math.Min(oldBoard.GetLength(1), Columns - 1); c++)
+                    {
+                        newBoard[r, c] = oldBoard[r, c];
+                    }
+                }
+                
+                boardByDate[kvp.Key] = newBoard;
+            }
+            
+            // Ensure current date has the updated board
+            EnsureBoardForDate(currentDate);
+            await SaveToLocalStorage();
+        }
+    }
+
+    private async Task RemoveColumn(int index)
+    {
+        if (index >= 0 && index < columnNames.Count && columnNames.Count > 1)
+        {
+            Columns--;
+            columnNames.RemoveAt(index);
+            
+            // Update all existing boards to remove the column
+            foreach (var kvp in boardByDate)
+            {
+                var oldBoard = kvp.Value;
+                var newBoard = new string[Rows, Columns];
+                
+                // Copy existing data, skipping the removed column
+                for (var r = 0; r < Rows; r++)
+                {
+                    var newCol = 0;
+                    for (var c = 0; c < oldBoard.GetLength(1); c++)
+                    {
+                        if (c != index && newCol < Columns)
+                        {
+                            newBoard[r, newCol] = oldBoard[r, c];
+                            newCol++;
+                        }
+                    }
+                }
+                
+                boardByDate[kvp.Key] = newBoard;
+            }
+            
+            // Ensure current date has the updated board
+            EnsureBoardForDate(currentDate);
+            await SaveToLocalStorage();
+        }
+    }
+
+    private async Task AddName()
+    {
+        var result = await JSRuntime.InvokeAsync<string>("prompt", "Enter person name:", $"Person {GetNextDefaultNameIndex()}");
+        if (!string.IsNullOrWhiteSpace(result))
+        {
+            peopleNames.Add(result);
+            await SaveToLocalStorage();
+        }
+    }
+
+    private async Task RemoveName(int index)
+    {
+        if (index >= 0 && index < peopleNames.Count)
+        {
+            peopleNames.RemoveAt(index);
+            await SaveToLocalStorage();
+        }
+    }
+
+    private async Task ImportFromWPF()
+    {
+        try
+        {
+            // This would need to be implemented to read from a file
+            // For now, let's create a simple import dialog
+            var importData = await JSRuntime.InvokeAsync<string>("prompt", "Paste your WPF data (JSON from %APPDATA%\\AllocationApp\\boards.json):");
+            if (!string.IsNullOrWhiteSpace(importData))
+            {
+                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(importData);
+                if (data != null)
+                {
+                    // Import column names
+                    if (data.TryGetValue("ColumnNames", out var columnNamesData) && 
+                        columnNamesData is System.Text.Json.JsonElement columnNamesElement)
+                    {
+                        columnNames.Clear();
+                        foreach (var item in columnNamesElement.EnumerateArray())
+                        {
+                            columnNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    // Import people names
+                    if (data.TryGetValue("PeopleNames", out var peopleNamesData) && 
+                        peopleNamesData is System.Text.Json.JsonElement peopleNamesElement)
+                    {
+                        peopleNames.Clear();
+                        foreach (var item in peopleNamesElement.EnumerateArray())
+                        {
+                            peopleNames.Add(item.GetString() ?? "");
+                        }
+                    }
+
+                    // Import boards
+                    if (data.TryGetValue("Boards", out var boardsData) && 
+                        boardsData is System.Text.Json.JsonElement boardsElement)
+                    {
+                        boardByDate.Clear();
+                        foreach (var board in boardsElement.EnumerateObject())
+                        {
+                            if (DateOnly.TryParse(board.Name, out var date))
+                            {
+                                var cells = new List<string>();
+                                foreach (var cell in board.Value.EnumerateArray())
+                                {
+                                    cells.Add(cell.GetString() ?? "");
+                                }
+                                boardByDate[date] = UnflattenBoard(cells);
+                            }
+                        }
+                    }
+
+                    await SaveToLocalStorage();
+                    StateHasChanged();
+                }
+            }
+        }
+        catch
+        {
+            // Ignore import errors
+        }
+    }
+
+    private int GetNextDefaultNameIndex()
+    {
+        var max = 0;
+        foreach (var name in peopleNames)
+        {
+            const string prefix = "Name-";
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(name.AsSpan(prefix.Length), out var n) &&
+                n > max)
+            {
+                max = n;
+            }
+        }
+
+        return max + 1;
     }
 }
